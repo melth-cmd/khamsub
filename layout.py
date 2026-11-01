@@ -45,8 +45,11 @@ from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
-# The dash characters subtitles use for turn-taking.
-DASHES = "-\u2013\u2014"
+# The dash characters subtitles use for turn-taking. U+2010 HYPHEN belongs here:
+# 1600 two-line cues in the PEN15 sources in subs/ start with it, and without it
+# those cues look undashed, so no dash rule can fire. It is also used inside a
+# word ("dial-up"), which is harmless: a dash is only read at the start of a line.
+DASHES = "-\u2010\u2013\u2014"
 
 # A proportional split must land on a space, and each piece must keep at least
 # this share of its expected length (text length / source lines). Below it the

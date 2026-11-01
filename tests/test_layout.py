@@ -358,3 +358,21 @@ def test_tags_survive_the_join():
     assert layout.normalise_source(source) == (
         "<i>- Wait, what?\n- It means girl in school.</i>"
     )
+
+
+# --- U+2010 as a speaker dash -----------------------------------------------
+
+
+def test_a_hyphen_dash_counts_as_a_speaker_dash():
+    assert layout.dash_count("\u2010 Hello.\n\u2010 Hi.") == 2
+
+
+def test_a_hyphen_inside_a_word_is_not_a_dash():
+    assert layout.dash_count("A dial\u2010up connection.") == 0
+
+
+def test_a_wrapped_line_behind_a_hyphen_dash_is_joined():
+    source = "\u2010 It's gonna be\nreally, really good."
+    assert layout.normalise_source(source) == (
+        "\u2010 It's gonna be really, really good."
+    )

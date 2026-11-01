@@ -45,6 +45,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- A speaker dash written as U+2010 HYPHEN (`‐`) is now recognised. 1600 two-line
+  cues in the PEN15 sources start with it, and every dash rule missed them: the
+  dash count was zero, the dash repair never fired, `dashes_lost` could never
+  report, and a wrapped continuation was never joined.
 - Layout repair no longer splits Thai mid-word. When the model merges a
   multi-line entry, the re-wrap may only break at a space, and no piece may fall
   below 35% of its expected length; an entry with no safe break point is left on
