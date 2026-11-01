@@ -915,3 +915,21 @@ def test_review_works_without_a_cache(tmp_path):
         client, source, review=True, use_cache=False, sleep=lambda seconds: None
     )
     assert result.suggestions == {1: "ไปตลาดนะ"}
+
+
+# --- source normalisation (#11) ---------------------------------------------
+
+
+def test_prepare_joins_a_wrapped_continuation_to_its_speaker():
+    prepared = pipeline.prepare(
+        [subtitle(1, "- Wait, what?\n- It means the ugliest girl\nin school.")]
+    )
+    assert prepared.entries == [
+        SourceEntry(1, "- Wait, what?\n- It means the ugliest girl in school.")
+    ]
+    assert prepared.sources[1] == prepared.entries[0].text
+
+
+def test_prepare_leaves_an_undashed_cue_alone():
+    prepared = pipeline.prepare([subtitle(1, "One.\nTwo.\nThree.")])
+    assert prepared.entries == [SourceEntry(1, "One.\nTwo.\nThree.")]

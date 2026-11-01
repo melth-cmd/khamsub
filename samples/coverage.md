@@ -41,8 +41,8 @@ reader or a careful eye.
 | 1 | baseline, one short line | one Thai line |
 | 2 | two source lines, two sentences | exactly 2 lines |
 | 3 | two long lines, Thai will have no spaces | exactly 2 lines; **auto**: no line starts with a combining mark (ั ิ ี ึ ื ุ ู ็ ์ ่ ้ ๊ ๋) and none ends with เ แ โ ใ ไ or ็ |
-| 4 | dash, dash, then a continuation stub (#11) | 3 lines; the first two keep a dash, the third does not |
-| 5 | dash, dash, bare continuation | 3 lines; dashes on lines 1–2 only |
+| 4 | dash, dash, then a continuation stub (#11) | **2 lines**: the stub is joined to its speaker before translation |
+| 5 | dash, dash, bare continuation | **2 lines**, same normalisation as cue 4 |
 | 6 | `<i>` spanning two dash lines | **auto**: `<i>` preserved once, 2 lines |
 | 7 | one long line | exactly **1** line; it must not be split to match anything |
 

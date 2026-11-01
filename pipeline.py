@@ -104,6 +104,11 @@ def prepare(subtitles: Sequence[srt.Subtitle], strip_hi: bool = False) -> Prepar
 
     Entries with nothing left to translate are recorded as dropped rather than
     sent as empty strings, which would fail validation forever.
+
+    A source cue is normalised first (layout.normalise_source): a continuation
+    the source wrapped onto its own line is joined to its speaker, so the line
+    count every later step uses is the one the cue means, not the one it was
+    wrapped at (#11).
     """
     prepared = Prepared()
     for subtitle in subtitles:
@@ -116,6 +121,7 @@ def prepare(subtitles: Sequence[srt.Subtitle], strip_hi: bool = False) -> Prepar
                 prepared.dropped.append(subtitle.index)
                 continue
             text = cleaned.text
+        text = layout.normalise_source(text)
 
         prepared.sources[subtitle.index] = text
         protected = tags.protect(text)

@@ -319,3 +319,42 @@ def test_line_count_is_the_non_blank_count(text, expected):
 )
 def test_dash_count_counts_speaker_dashes_only(text, expected):
     assert layout.dash_count(text) == expected
+
+
+# --- source normalisation (#11) ---------------------------------------------
+
+
+def test_a_wrapped_continuation_is_joined_to_its_speaker():
+    source = "- Wait, what?\n- It means the ugliest girl\nin school."
+    assert layout.normalise_source(source) == (
+        "- Wait, what?\n- It means the ugliest girl in school."
+    )
+
+
+def test_a_label_line_does_not_swallow_the_next_speaker():
+    source = "MAYA: No.\n- He'll probably\nlook at me later."
+    assert layout.normalise_source(source) == (
+        "MAYA: No.\n- He'll probably look at me later."
+    )
+
+
+def test_an_undashed_cue_is_left_exactly_as_written():
+    source = "One.\nTwo.\nThree."
+    assert layout.normalise_source(source) == source
+
+
+def test_dashed_lines_are_never_joined():
+    source = "- One.\n- Two.\n- Three."
+    assert layout.normalise_source(source) == source
+
+
+def test_a_group_that_does_not_fit_keeps_its_own_wrap():
+    source = "- " + "a" * 40 + "\nb."
+    assert layout.normalise_source(source) == source
+
+
+def test_tags_survive_the_join():
+    source = "<i>- Wait, what?\n- It means girl\nin school.</i>"
+    assert layout.normalise_source(source) == (
+        "<i>- Wait, what?\n- It means girl in school.</i>"
+    )

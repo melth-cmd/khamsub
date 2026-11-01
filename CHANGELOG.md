@@ -23,6 +23,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- A source cue that wrapped a speaker's continuation onto its own line is now
+  joined to that speaker before translation, so the model is no longer forced to
+  reproduce a stub line like `in school.`. Only cues that use a speaker dash are
+  touched, and a group is joined only when it fits on one line, so no break point
+  is invented. The source text is part of the cache key, so affected entries are
+  retranslated once (about a quarter of a file).
 - `english_left` no longer reports a run glued to Thai; that fragment is
   `mixed_script`, so the two flags never describe the same text.
 - `english_left` is strict: only links, handles and short codes may stay Latin,
