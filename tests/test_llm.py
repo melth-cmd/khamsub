@@ -536,3 +536,41 @@ def test_validate_accepts_a_kept_number():
     batch = make_batches([SourceEntry(1, '"Pen15"')], size=1)[0]
     decoded = llm.decode_entries('[1] "เพน15"')
     assert llm.validate(batch, decoded) == []
+
+
+# --- latin glued to thai ----------------------------------------------------
+
+
+def test_mixed_script_finds_a_latin_run_glued_to_thai():
+    # South Park [841] came back as "ทwerp!".
+    assert llm.mixed_script("ทwerp!") == ["werp"]
+
+
+def test_mixed_script_sees_a_run_behind_several_thai_characters():
+    # Not limited to one Thai letter: Thai words are longer than that.
+    assert llm.mixed_script("ข้อความwerp") == ["werp"]
+
+
+def test_mixed_script_ignores_a_delimited_word():
+    assert llm.mixed_script("สวัสดี werp") == []
+    assert llm.mixed_script("werp!") == []
+
+
+def test_mixed_script_ignores_a_kept_code_touching_thai():
+    # Thai has no spaces, so a short code may legitimately abut Thai.
+    assert llm.kept_verbatim("V2") == ["V2"]
+    assert llm.mixed_script("ใช้V2") == []
+
+
+def test_mixed_script_strips_markup_before_looking():
+    assert llm.mixed_script("<i>ทwerp</i>") == ["werp"]
+    assert llm.mixed_script("<i>สวัสดี</i>") == []
+
+
+def test_validate_reports_latin_glued_to_thai():
+    from batcher import make_batches, SourceEntry
+
+    batch = make_batches([SourceEntry(841, "Bullshit.")], size=1)[0]
+    decoded = llm.decode_entries("[841] ทwerp!")
+    kinds = [issue.kind for issue in llm.validate(batch, decoded)]
+    assert "mixed_script" in kinds

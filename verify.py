@@ -17,6 +17,7 @@ Flag kinds:
   lost_token           a number, link or short code from the source is missing
   glossary_missing     a glossary term is not rendered as the glossary says
   glossary_inconsistent  a term that should be Thai is still in English
+  mixed_script         Latin letters glued to Thai: a mangled fragment
   english_left         English left in the translation (a mistake, except for
                        links, handles and short letter-digit codes)
 
@@ -54,6 +55,7 @@ KINDS: tuple[str, ...] = (
     "lost_token",
     "glossary_missing",
     "glossary_inconsistent",
+    "mixed_script",
     "english_left",
 )
 
@@ -209,6 +211,22 @@ def _has_en(text: str, word: str) -> bool:
     return re.search(pattern, text, re.IGNORECASE) is not None
 
 
+def mixed_script(index: int, source: str, translated: str) -> list[Flag]:
+    """Latin glued to Thai, which is never a deliberate keep."""
+    runs = llm.mixed_script(translated)
+    if not runs:
+        return []
+    return [
+        Flag(
+            index,
+            "mixed_script",
+            "Latin glued to Thai: " + ", ".join(runs),
+            source,
+            translated,
+        )
+    ]
+
+
 def leftover_english(
     index: int,
     source: str,
@@ -219,14 +237,21 @@ def leftover_english(
 
     Words covered by any glossary term are left to the glossary checks, so a
     name that should have been transliterated is reported once, not twice.
+    A run glued to Thai is a mangled fragment and is left to mixed_script, so
+    this stays about words that were deliberately left in English.
     """
     covered = {term.en.casefold() for term in terms}
+    glued = {word.casefold() for word in llm.mixed_script(translated)}
     # Links, handles and letter-digit codes stay Latin on purpose, so they are
     # not leftover English; drop them before looking for words.
     allowed = translated
     for token in llm.kept_verbatim(translated):
         allowed = allowed.replace(token, " ")
-    words = [word for word in english_words(allowed) if word.casefold() not in covered]
+    words = [
+        word
+        for word in english_words(allowed)
+        if word.casefold() not in covered and word.casefold() not in glued
+    ]
     if not words:
         return []
     return [
@@ -319,6 +344,7 @@ def check_entry(
         )
 
     flags.extend(glossary_flags(index, source, translated, terms))
+    flags.extend(mixed_script(index, source, translated))
     flags.extend(leftover_english(index, source, translated, terms))
     flags.extend(length_flags(index, source, translated))
     return flags

@@ -16,9 +16,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   characters, e.g. `K9`) that the translation drops is a retryable failure and a
   report flag. A longer code keeps its digits and transliterates its letters
   (`Flymiamibro22` -> `ฟลายมยเอมีโบร22`).
+- `mixed_script` check: Latin letters glued to Thai (`ทwerp`) are a retryable
+  failure and a report flag, so a mangled fragment can no longer ship as advisory
+  text. Kept tokens are blanked first, so a short code that legitimately touches
+  Thai is not reported.
 
 ### Changed
 
+- `english_left` no longer reports a run glued to Thai; that fragment is
+  `mixed_script`, so the two flags never describe the same text.
 - `english_left` is strict: only links, handles and short codes may stay Latin,
   so a name or label left in English is now reported as a mistake instead of
   being excused by the glossary keep-list.

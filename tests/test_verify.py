@@ -174,6 +174,30 @@ def test_leftover_english_lists_each_word_once():
     assert "OK" not in flags[0].message
 
 
+# --- latin glued to thai ----------------------------------------------------
+
+
+def test_latin_glued_to_thai_is_its_own_flag():
+    # South Park [841]: "Bullshit." came back as "ทwerp!".
+    flags = verify.check_entry(841, "Bullshit.", "ทwerp!")
+    assert [flag.kind for flag in flags] == ["mixed_script"]
+    assert "werp" in flags[0].message
+
+
+def test_a_glued_run_is_not_also_reported_as_leftover_english():
+    flags = verify.check_entry(841, "Bullshit.", "ทwerp!")
+    assert "english_left" not in [flag.kind for flag in flags]
+
+
+def test_a_delimited_english_word_is_still_leftover_english():
+    flags = verify.check_entry(1, "Hello world.", "สวัสดี world")
+    assert [flag.kind for flag in flags] == ["english_left"]
+
+
+def test_a_short_code_touching_thai_is_not_glued_latin():
+    assert verify.check_entry(1, "V2", "ใช้V2") == []
+
+
 # --- length -----------------------------------------------------------------
 
 

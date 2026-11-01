@@ -82,7 +82,7 @@ class Issue:
     kind: str
     # parsing:  "duplicate" | "empty"
     # identity: "missing" | "extra"
-    # language: "missing_thai" | "foreign_script" | "lost_token"
+    # language: "missing_thai" | "foreign_script" | "lost_token" | "mixed_script"
     # tags:     "tag_mismatch"
     # other:    "bad_response"
     index: int | None
@@ -272,6 +272,34 @@ def missing_kept(source: str, translated: str) -> list[str]:
     return missing
 
 
+# Latin letters immediately next to Thai. Thai is written without spaces, so a
+# kept token is always delimited by a space or punctuation; a Latin run that
+# touches Thai is a fragment the model mangled ("ทwerp" for "Bullshit").
+_THAI_CHAR_RE = re.compile(r"[\u0E00-\u0E7F]")
+_LATIN_RUN_RE = re.compile(r"[A-Za-z]+(?:['\u2019][A-Za-z]+)*")
+
+
+def mixed_script(text: str) -> list[str]:
+    """Latin runs glued to Thai, in order, without duplicates.
+
+    Kept tokens (links, handles, e-mail, short letter-digit codes) are blanked
+    first, so a code that legitimately touches Thai is not reported.
+    """
+    cleaned = tags.strip_markup(text)
+    for token in kept_verbatim(text):
+        cleaned = cleaned.replace(token, " ")
+
+    found: list[str] = []
+    for match in _LATIN_RUN_RE.finditer(cleaned):
+        before = cleaned[match.start() - 1] if match.start() else ""
+        after = cleaned[match.end()] if match.end() < len(cleaned) else ""
+        if not (_THAI_CHAR_RE.match(before) or _THAI_CHAR_RE.match(after)):
+            continue
+        if match.group(0) not in found:
+            found.append(match.group(0))
+    return found
+
+
 def validate(batch: Batch, decoded: Decoded) -> list[Issue]:
     """Check a parsed reply against the batch that asked for it.
 
@@ -308,6 +336,15 @@ def validate(batch: Batch, decoded: Decoded) -> list[Issue]:
                         "missing_thai",
                         index,
                         f"entry [{index}] has no Thai: {text[:40]!r}",
+                    )
+                )
+            glued = mixed_script(text)
+            if glued:
+                issues.append(
+                    Issue(
+                        "mixed_script",
+                        index,
+                        f"entry [{index}] glues Latin to Thai: {'/'.join(glued)}",
                     )
                 )
 

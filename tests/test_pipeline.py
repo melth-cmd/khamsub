@@ -662,7 +662,7 @@ def test_a_term_that_never_appears_changes_nothing_in_the_estimate():
 def test_fix_retranslates_only_the_flagged_entries(tmp_path):
     source = make_source(tmp_path, "Hello there.", "To the market.", "See you.")
     client = FakeClient(
-        ["[1] สวัสดี\n[2] ไปmarketนะ\n[3] เจอกัน", "[2] ไปตลาดนะ"]
+        ["[1] สวัสดี\n[2] ไป market นะ\n[3] เจอกัน", "[2] ไปตลาดนะ"]
     )
     result, target = pipeline.translate_file(
         client, source, fix=True, context_before=0, context_after=0,
@@ -693,21 +693,21 @@ def test_fix_does_nothing_when_nothing_is_flagged(tmp_path):
 
 def test_a_failed_fix_keeps_the_earlier_translation(tmp_path):
     source = make_source(tmp_path, "To the market.")
-    client = FakeClient(["[1] ไปmarketนะ", "[1] 你好"])
+    client = FakeClient(["[1] ไป market นะ", "[1] 你好"])
     result, target = pipeline.translate_file(
         client, source, fix=True, max_retries=0, sleep=lambda seconds: None
     )
 
     assert client.call_count == 2
     assert result.fixed == [1]
-    assert result.results[0].text == "ไปmarketนะ"
-    assert srtio.load_srt(target).subtitles[0].content == "ไปmarketนะ"
+    assert result.results[0].text == "ไป market นะ"
+    assert srtio.load_srt(target).subtitles[0].content == "ไป market นะ"
 
 
 def test_the_fix_pass_sees_the_first_pass_as_context(tmp_path):
     source = make_source(tmp_path, "Hello there.", "To the market.", "See you.")
     client = FakeClient(
-        ["[1] สวัสดี\n[2] ไปmarketนะ\n[3] เจอกัน", "[2] ไปตลาดนะ"]
+        ["[1] สวัสดี\n[2] ไป market นะ\n[3] เจอกัน", "[2] ไปตลาดนะ"]
     )
     pipeline.translate_file(
         client, source, fix=True, context_before=1, context_after=1,
@@ -724,7 +724,7 @@ def test_the_fix_pass_sees_the_first_pass_as_context(tmp_path):
 def test_fixed_text_is_cached(tmp_path):
     source = make_source(tmp_path, "To the market.")
     pipeline.translate_file(
-        FakeClient(["[1] ไปmarketนะ", "[1] ไปตลาดนะ"]),
+        FakeClient(["[1] ไป market นะ", "[1] ไปตลาดนะ"]),
         source,
         fix=True,
         sleep=lambda seconds: None,
@@ -744,7 +744,7 @@ def test_fixed_text_is_cached(tmp_path):
 
 def test_fix_works_without_a_cache(tmp_path):
     source = make_source(tmp_path, "To the market.")
-    client = FakeClient(["[1] ไปmarketนะ", "[1] ไปตลาดนะ"])
+    client = FakeClient(["[1] ไป market นะ", "[1] ไปตลาดนะ"])
     result, target = pipeline.translate_file(
         client, source, fix=True, use_cache=False, sleep=lambda seconds: None
     )
@@ -794,7 +794,7 @@ def test_seed_is_used_as_context_only():
 def test_the_fix_pass_does_not_seed_english_as_context(tmp_path):
     source = make_source(tmp_path, "Hello there.", "To the market.")
     # Entry 1 fails (Chinese, no retries), entry 2 is flagged for English.
-    client = FakeClient(["[1] 你好\n[2] ไปmarketนะ", "[2] ไปตลาดนะ"])
+    client = FakeClient(["[1] 你好\n[2] ไป market นะ", "[2] ไปตลาดนะ"])
     pipeline.translate_file(
         client, source, fix=True, max_retries=0, context_before=1, context_after=0,
         sleep=lambda seconds: None,
@@ -808,7 +808,7 @@ def test_the_fix_pass_does_not_seed_english_as_context(tmp_path):
 # --- --review (step 21) -----------------------------------------------------
 
 
-FIRST_PASS = "[1] สวัสดี\n[2] ไปmarketนะ\n[3] เจอกัน"
+FIRST_PASS = "[1] สวัสดี\n[2] ไป market นะ\n[3] เจอกัน"
 
 
 def test_review_suggests_without_changing_the_file(tmp_path):
@@ -821,19 +821,19 @@ def test_review_suggests_without_changing_the_file(tmp_path):
 
     assert client.call_count == 2
     prompt = client.calls[1][1]["content"]
-    assert "[2] ไปmarketนะ" in prompt  # the current translation is shown
+    assert "[2] ไป market นะ" in prompt  # the current translation is shown
     assert "[TRANSLATE]\n[2] To the market." in prompt
     assert "Hello there." not in prompt  # only the flagged entry is sent
     assert "review pass" in client.calls[1][0]["content"]
     assert result.reviewed == [2]
     assert result.suggestions == {2: "ไปตลาดนะ"}
-    assert [s.content for s in srtio.load_srt(target).subtitles][1] == "ไปmarketนะ"
+    assert [s.content for s in srtio.load_srt(target).subtitles][1] == "ไป market นะ"
 
 
 def test_review_suggestions_are_not_cached(tmp_path):
     source = make_source(tmp_path, "To the market.")
     pipeline.translate_file(
-        FakeClient(["[1] ไปmarketนะ", "[1] ไปตลาดนะ"]),
+        FakeClient(["[1] ไป market นะ", "[1] ไปตลาดนะ"]),
         source,
         review=True,
         sleep=lambda seconds: None,
@@ -844,12 +844,12 @@ def test_review_suggestions_are_not_cached(tmp_path):
     second = FakeClient()
     result, _ = pipeline.translate_file(second, source, sleep=lambda seconds: None)
     assert second.call_count == 0
-    assert result.results[0].text == "ไปmarketนะ"
+    assert result.results[0].text == "ไป market นะ"
 
 
 def test_a_review_that_repeats_the_line_is_not_a_suggestion(tmp_path):
     source = make_source(tmp_path, "To the market.")
-    client = FakeClient(["[1] ไปmarketนะ", "[1] ไปmarketนะ"])
+    client = FakeClient(["[1] ไป market นะ", "[1] ไป market นะ"])
     result, _ = pipeline.translate_file(
         client, source, review=True, sleep=lambda seconds: None
     )
@@ -870,18 +870,18 @@ def test_review_does_nothing_when_nothing_is_flagged(tmp_path):
 
 def test_a_failed_review_reply_gives_no_suggestion(tmp_path):
     source = make_source(tmp_path, "To the market.")
-    client = FakeClient(["[1] ไปmarketนะ", "[1] 你好"])
+    client = FakeClient(["[1] ไป market นะ", "[1] 你好"])
     result, target = pipeline.translate_file(
         client, source, review=True, max_retries=0, sleep=lambda seconds: None
     )
     assert client.call_count == 2
     assert result.suggestions == {}
-    assert srtio.load_srt(target).subtitles[0].content == "ไปmarketนะ"
+    assert srtio.load_srt(target).subtitles[0].content == "ไป market นะ"
 
 
 def test_fix_runs_before_review(tmp_path):
     source = make_source(tmp_path, "To the market.")
-    client = FakeClient(["[1] ไปmarketนะ", "[1] ไปตลาดนะ"])
+    client = FakeClient(["[1] ไป market นะ", "[1] ไปตลาดนะ"])
     result, _ = pipeline.translate_file(
         client, source, fix=True, review=True, sleep=lambda seconds: None
     )
@@ -895,7 +895,7 @@ def test_fix_runs_before_review(tmp_path):
 
 def test_review_sees_the_lines_fix_could_not_repair(tmp_path):
     source = make_source(tmp_path, "To the market.")
-    client = FakeClient(["[1] ไปmarketนะ", "[1] 你好", "[1] ไปตลาดนะ"])
+    client = FakeClient(["[1] ไป market นะ", "[1] 你好", "[1] ไปตลาดนะ"])
     result, target = pipeline.translate_file(
         client, source, fix=True, review=True, max_retries=0, sleep=lambda seconds: None
     )
@@ -905,12 +905,12 @@ def test_review_sees_the_lines_fix_could_not_repair(tmp_path):
     assert result.reviewed == [1]
     assert result.suggestions == {1: "ไปตลาดนะ"}
     # The failed fix kept the earlier text; review only advises.
-    assert srtio.load_srt(target).subtitles[0].content == "ไปmarketนะ"
+    assert srtio.load_srt(target).subtitles[0].content == "ไป market นะ"
 
 
 def test_review_works_without_a_cache(tmp_path):
     source = make_source(tmp_path, "To the market.")
-    client = FakeClient(["[1] ไปmarketนะ", "[1] ไปตลาดนะ"])
+    client = FakeClient(["[1] ไป market นะ", "[1] ไปตลาดนะ"])
     result, _ = pipeline.translate_file(
         client, source, review=True, use_cache=False, sleep=lambda seconds: None
     )

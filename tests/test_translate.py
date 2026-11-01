@@ -962,7 +962,7 @@ def test_an_unwritable_report_only_warns(project, fake, capsys, monkeypatch):
 # --- --fix (step 20) --------------------------------------------------------
 
 # Entry 2 keeps an English word in the first pass; the fix pass must redo only it.
-MIXED_REPLIES = "[1] สวัสดี\n[2] ไปmarketนะ\n[3] {0}สบายดี{1}"
+MIXED_REPLIES = "[1] สวัสดี\n[2] ไป market นะ\n[3] {0}สบายดี{1}"
 
 
 def test_fix_retranslates_the_flagged_line(project, fake, capsys):
@@ -998,7 +998,7 @@ def test_fix_reports_what_still_fails(project, fake):
     out = srtio.load_srt(project / "sample.th.srt")
     report = (project / "sample.report.txt").read_text(encoding="utf-8")
     assert status == 0
-    assert out.subtitles[1].content == "ไปmarketนะ"
+    assert out.subtitles[1].content == "ไป market นะ"
     assert "Fix pass: re-translated 1 entry (0 clean, 1 still flagged)" in report
 
 
@@ -1013,7 +1013,7 @@ def test_review_puts_suggestions_in_the_report(project, fake, capsys):
     report = (project / "sample.report.txt").read_text(encoding="utf-8")
     assert status == 0
     assert fake.call_count == 2
-    assert out.subtitles[1].content == "ไปmarketนะ"  # review never changes the file
+    assert out.subtitles[1].content == "ไป market นะ"  # review never changes the file
     assert "Suggestions (from --review, nothing applied):" in report
     assert "  [2] ไปตลาดนะ" in report
     assert report.index("Suggestions") < report.index("[2] english_left")
