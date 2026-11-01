@@ -32,6 +32,7 @@ khamsub/
 ├── layout.py          # normalise wrapped source lines; rewrap/merge the translation
 ├── verify.py          # checks a finished file, returns flags, writes report.txt
 ├── pipeline.py        # orchestrates one file: prepare -> batch -> translate -> write
+├── progress.py        # live progress line: bar, elapsed time, ETA
 ├── pricing.py         # asks the provider for the model's current price
 ├── samples/
 │   ├── coverage.srt   # 60-cue sample: every behaviour we have fixed or argued about
@@ -81,6 +82,7 @@ below. Each step names the file that owns it.
 | fix cue parsing, timestamps or encoding | `srtio.py` | |
 | change batching or how much context a batch sees | `batcher.py` | |
 | change retry count, backoff or failure handling | `runner.py` | |
+| change the progress line or what it reports | `progress.py` | `render`, `Reporter`; `pipeline.Progress` carries the numbers |
 | change how a whole file is processed, start to finish | `pipeline.py` | `prepare`, `translate_subtitles`, `retranslate_flagged` |
 | change cost, token or usage reporting | `llm.py`, `translate.py`, `pricing.py` | `Usage`, `_print_estimate`, `fetch_price` |
 | add a CLI flag | `translate.py` | then README.md |
@@ -105,6 +107,7 @@ Real bugs, and where each one lived. Useful when a symptom looks new.
 | a stub like "in school." forced onto its own line | `layout.normalise_source` in `pipeline.prepare` |
 | estimate far below the real bill | `llm.usage_from_response`, `pricing.py` |
 | names and labels left in English | `llm.SYSTEM_PROMPT` (transliteration policy) |
+| the tool looks hung during a long run | `progress.py` — the live line and its ticker |
 
 ## Invariants
 
@@ -153,5 +156,10 @@ against `samples/coverage.md`.
 ## Keeping this file current
 
 If you add a module, add it here — `tests/test_structure.py` fails when a `.py`
-file in the root is not mentioned. That is the only maintenance this file needs;
-keep the prose short rather than detailed, so it stays true.
+file in the root is not mentioned.
+
+When you close a bug, add a row to "Symptom to module". That table is the
+highest-value part and stays accurate almost for free if it is part of closing
+an issue; prefer growing it over adding prose.
+
+Keep the prose short rather than detailed, so it stays true.

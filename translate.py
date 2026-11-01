@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import batcher
@@ -23,6 +23,7 @@ import glossary
 import llm
 import pipeline
 import pricing
+import progress
 import srtio
 import verify
 
@@ -218,6 +219,7 @@ def translate_one(
     notes: bible.Notes | None = None,
     fix: bool = False,
     review: bool = False,
+    progress: Callable[[pipeline.Progress], None] | None = None,
 ) -> tuple[pipeline.TranslatedFile, Path, Path | None]:
     """Translate a single file and write its report.
 
@@ -255,6 +257,7 @@ def translate_one(
         terms=terms,
         fix=fix,
         review=review,
+        progress=progress,
     )
     return result, target, write_report_for(source, target, result, terms, settings)
 
@@ -568,17 +571,19 @@ def main(argv: list[str] | None = None) -> int:
         if len(sources) > 1:
             print(f"[{number}/{len(sources)}] {source.name}", file=sys.stderr)
         try:
-            result, target, report = translate_one(
-                client,
-                source,
-                settings,
-                output,
-                limit=args.limit,
-                range_=args.range_,
-                notes=notes.get(source),
-                fix=args.fix,
-                review=args.review,
-            )
+            with progress.Reporter(live=False if args.verbose else None) as bar:
+                result, target, report = translate_one(
+                    client,
+                    source,
+                    settings,
+                    output,
+                    limit=args.limit,
+                    range_=args.range_,
+                    notes=notes.get(source),
+                    fix=args.fix,
+                    review=args.review,
+                    progress=bar.update,
+                )
         except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest
             print(f"error: {source.name}: {exc}", file=sys.stderr)
             status = 1

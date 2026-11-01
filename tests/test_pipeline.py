@@ -949,3 +949,34 @@ def test_a_clean_line_count_is_not_retried():
     client = FakeClient(["[1] หนึ่ง\nสอง"])
     run(client, [subtitle(1, "One.\nTwo.")])
     assert client.call_count == 1
+
+
+# --- progress (#5) ----------------------------------------------------------
+
+
+def test_progress_reports_the_start_and_each_batch():
+    events = []
+    client = FakeClient(["[1] หนึ่ง"])
+    run(client, [subtitle(1, "One.")], progress=events.append)
+    assert [event.batches_done for event in events] == [0, 1]
+    assert events[0].entries_total == 1
+    assert events[0].batches_total == 1
+    assert events[1].first_index == 1
+    assert events[1].last_index == 1
+
+
+def test_progress_counts_every_batch():
+    events = []
+    client = FakeClient(["[1] หนึ่ง", "[2] สอง", "[3] สาม"])
+    run(
+        client,
+        [
+            subtitle(1, "Alpha."),
+            subtitle(2, "Beta."),
+            subtitle(3, "Gamma."),
+        ],
+        size=1,
+        progress=events.append,
+    )
+    assert [event.batches_done for event in events] == [0, 1, 2, 3]
+    assert events[0].batches_total == 3

@@ -1098,3 +1098,14 @@ def test_the_summary_splits_the_tokens(project, fake, capsys):
     out = capsys.readouterr().out
     assert "150 tokens (100 in, 50 out, 40 reasoning)" in out
     assert "$0.0025" in out
+
+
+# --- progress (#5) ----------------------------------------------------------
+
+
+def test_progress_goes_to_stderr_not_stdout(project, fake, capsys):
+    fake.queue(REPLIES)
+    run(project, fake, copy(project, "sample.en.srt"))
+    captured = capsys.readouterr()
+    assert "translating 3 entries in 1 batch" in captured.err
+    assert "translating" not in captured.out

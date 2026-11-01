@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Collection, Mapping, Sequence
+from typing import Callable, Collection, Mapping, Sequence
 
 import srt
 
@@ -173,6 +174,7 @@ def translate_subtitles(
     ignore_cache: bool = False,
     seed: Mapping[int, str] | None = None,
     current: Mapping[int, str] | None = None,
+    progress: Callable[[Progress], None] | None = None,
     **runner_kwargs,
 ) -> TranslatedFile:
     """Translate a whole file, batch by batch, keeping timestamps intact.
@@ -256,6 +258,10 @@ def translate_subtitles(
     source_text = {entry.index: entry.text for entry in prepared.entries}
     batch_count = -(-len(pending) // size)
 
+    started = time.monotonic()
+    if progress is not None:
+        progress(Progress(0, batch_count, len(pending)))
+
     for number in range(1, batch_count + 1):
         # Rebuilt each round so context-before picks up Thai produced so far.
         batch = batcher.make_batches(
@@ -329,6 +335,22 @@ def translate_subtitles(
         if cache is not None:
             cache.save()
 
+        if progress is not None:
+            elapsed = time.monotonic() - started
+            left = batch_count - number
+            eta = elapsed / number * left if left else 0.0
+            progress(
+                Progress(
+                    number,
+                    batch_count,
+                    len(pending),
+                    batch.items[0].index,
+                    batch.items[-1].index,
+                    elapsed,
+                    eta,
+                )
+            )
+
     result.results.sort(key=lambda entry: entry.index)
     # Verification compares each finished entry with the text it came from.
     result.sources = {
@@ -385,6 +407,28 @@ GLOSSARY_OVERHEAD_CHARS = len("[GLOSSARY]\n\n")
 
 
 @dataclass
+@dataclass(frozen=True)
+class Progress:
+    """One progress event: the start of a run, or a batch that just finished.
+
+    `batches_done` is 0 for the start event, which is what tells a reporter to
+    print the opening line rather than a bar. `eta_s` is 0 on the last batch.
+    """
+
+    batches_done: int
+    batches_total: int
+    entries_total: int
+    first_index: int = 0
+    last_index: int = 0
+    elapsed_s: float = 0.0
+    eta_s: float | None = None
+
+    @property
+    def started(self) -> bool:
+        return self.batches_done == 0
+
+
+@dataclass(frozen=True)
 class Estimate:
     """What a run would cost, without making it."""
 

@@ -36,6 +36,12 @@ This reads the English file and writes `Movie (2026).th.srt` next to it. It also
 writes a cache and a report (see "Files it makes"). A typical episode may take a
 few minutes.
 
+While it runs, one line shows the progress: the batch, a bar, the time spent and
+an estimate of what is left. On a terminal it updates in place, so a slow model
+is visibly slow rather than looking hung. The estimate assumes the remaining
+batches cost the same as the ones already done, so treat it as a rough guide. If
+the output is redirected to a file, one line is printed per batch instead.
+
 ## Commands
 
     python translate.py "Movie.en.srt"

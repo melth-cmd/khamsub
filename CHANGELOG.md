@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- A live progress line while translating: the batch, a bar, the time spent and a
+  rough estimate of what is left. On a terminal it redraws in place, so a long
+  request is visibly alive instead of looking hung; when the output is
+  redirected, one line is printed per batch. `-v` keeps its per-batch log detail
+  and falls back to one line per batch, so the two never fight over a row.
 - `--dry-run` reports input and output tokens and cost on separate lines, and
   asks OpenRouter for the model's current price instead of trusting
   `config.toml`. It does not pretend to know the reasoning bill: it says so, and
