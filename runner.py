@@ -91,10 +91,7 @@ def _wait_for(
 
 
 def _add_usage(total: Usage, extra: Usage) -> Usage:
-    return Usage(
-        prompt_tokens=total.prompt_tokens + extra.prompt_tokens,
-        completion_tokens=total.completion_tokens + extra.completion_tokens,
-    )
+    return total + extra
 
 
 def _mark_failed(

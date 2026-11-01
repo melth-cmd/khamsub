@@ -426,7 +426,8 @@ def test_dry_run_needs_no_key_and_builds_no_client(project, monkeypatch, capsys)
     out = capsys.readouterr().out
     assert status == 0
     assert "3 entries in 1 batch" in out  # default size 60 fits the whole file
-    assert "tokens" in out and "$" in out
+    assert "tokens" in out
+    assert "cost unknown" in out  # no prices in the test config
 
 
 # --- story bible pre-pass (step 15) -----------------------------------------
@@ -1039,3 +1040,61 @@ def test_fix_and_review_fix_then_advise(project, fake):
     assert out.subtitles[1].content == "ไปตลาดนะ"
     assert "Fix pass: re-translated 1 entry (all clean now)" in report
     assert "Suggestions" not in report
+
+
+# --- cost reporting ---------------------------------------------------------
+
+
+def test_a_dry_run_uses_the_published_price(project, monkeypatch, capsys):
+    monkeypatch.setattr("pricing.fetch_price", lambda *a, **k: (0.15, 0.60))
+    status = translate.main(
+        [
+            str(project / "sample.en.srt"),
+            "--config",
+            str(project / "config.toml"),
+            "--dry-run",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert status == 0
+    assert "$" in out
+    assert "(excludes reasoning)" in out
+
+
+def test_a_dry_run_falls_back_to_the_configured_price(project, capsys):
+    (project / "config.toml").write_text(
+        '[llm]\nmodel = "test/model"\n'
+        "input_usd_per_mtok = 3.0\noutput_usd_per_mtok = 6.0\n",
+        encoding="utf-8",
+    )
+    status = translate.main(
+        [
+            str(project / "sample.en.srt"),
+            "--config",
+            str(project / "config.toml"),
+            "--dry-run",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert status == 0
+    assert "$" in out
+
+
+def test_the_summary_splits_the_tokens(project, fake, capsys):
+    from llm import Completion, Usage
+
+    fake.queue(
+        Completion(
+            text=REPLIES,
+            usage=Usage(
+                prompt_tokens=100,
+                completion_tokens=50,
+                reasoning_tokens=40,
+                cost_usd=0.0025,
+            ),
+        )
+    )
+    run(project, fake, copy(project, "sample.en.srt"))
+    out = capsys.readouterr().out
+    assert "150 tokens (100 in, 50 out, 40 reasoning)" in out
+    assert "$0.0025" in out

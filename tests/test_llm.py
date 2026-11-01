@@ -603,3 +603,63 @@ def test_validate_reports_latin_glued_to_thai():
     decoded = llm.decode_entries("[841] ทwerp!")
     kinds = [issue.kind for issue in llm.validate(batch, decoded)]
     assert "mixed_script" in kinds
+
+
+# --- usage reporting --------------------------------------------------------
+
+
+def test_usage_reads_reasoning_tokens_and_the_reported_cost():
+    response = SimpleNamespace(
+        usage=SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost=0.002,
+            completion_tokens_details=SimpleNamespace(reasoning_tokens=40),
+            prompt_tokens_details=SimpleNamespace(cached_tokens=10),
+        )
+    )
+    usage = llm.usage_from_response(response)
+    assert usage.prompt_tokens == 100
+    assert usage.completion_tokens == 50  # already includes the reasoning
+    assert usage.reasoning_tokens == 40
+    assert usage.cached_tokens == 10
+    assert usage.cost_usd == pytest.approx(0.002)
+
+
+def test_usage_without_details_is_still_readable():
+    response = SimpleNamespace(
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=6)
+    )
+    usage = llm.usage_from_response(response)
+    assert (usage.reasoning_tokens, usage.cached_tokens) == (0, 0)
+    assert usage.cost_usd is None
+
+
+def test_usage_reads_fields_the_sdk_did_not_model():
+    usage_object = SimpleNamespace(prompt_tokens=1, completion_tokens=2)
+    usage_object.model_extra = {
+        "cost": 0.5,
+        "completion_tokens_details": {"reasoning_tokens": 7},
+    }
+    usage = llm.usage_from_response(SimpleNamespace(usage=usage_object))
+    assert usage.reasoning_tokens == 7
+    assert usage.cost_usd == pytest.approx(0.5)
+
+
+def test_a_reply_without_usage_reports_nothing():
+    assert llm.usage_from_response(SimpleNamespace()) == llm.Usage()
+
+
+def test_usage_adds_every_field_and_keeps_a_known_cost():
+    first = llm.Usage(prompt_tokens=1, completion_tokens=2, reasoning_tokens=3, cost_usd=0.1)
+    second = llm.Usage(prompt_tokens=10, completion_tokens=20, reasoning_tokens=30)
+    total = first + second
+    assert total.prompt_tokens == 11
+    assert total.completion_tokens == 22
+    assert total.reasoning_tokens == 33
+    assert total.cost_usd == pytest.approx(0.1)
+
+
+def test_usage_adds_two_known_costs():
+    total = llm.Usage(cost_usd=0.1) + llm.Usage(cost_usd=0.2)
+    assert total.cost_usd == pytest.approx(0.3)

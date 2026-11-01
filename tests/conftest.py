@@ -51,3 +51,11 @@ class FakeClient:
 @pytest.fixture
 def fake_client() -> FakeClient:
     return FakeClient()
+
+
+@pytest.fixture(autouse=True)
+def _no_price_fetch(monkeypatch):
+    """No test reaches the network for prices; config prices are used instead."""
+    import pricing
+
+    monkeypatch.setattr(pricing, "fetch_price", lambda *args, **kwargs: None)

@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- `--dry-run` asks OpenRouter for the model's current price instead of trusting
+  `config.toml`, and says the estimate excludes reasoning tokens. `config.toml`
+  prices are now only a fallback for providers that publish no price list.
+- A finished run reports prompt, completion, reasoning and cached tokens, plus
+  the exact cost the provider charged (`usage.cost`), so a run can be priced
+  without a price table and a reasoning model can be told apart from a chatty one.
 - Transliteration policy: names, nicknames, brands, song and film titles, speaker
   labels and acronyms are now rendered in Thai. A speaker label keeps its colon
   and stays on its words (`MAYA: No.` -> `เมย่า: ไม่`).
@@ -28,7 +34,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   reproduce a stub line like `in school.`. Only cues that use a speaker dash are
   touched, and a group is joined only when it fits on one line, so no break point
   is invented. The source text is part of the cache key, so affected entries are
-  retranslated once (about a quarter of a file).
+  retranslated once (18.9% of the multi-line cues measured on subs/).
 - `english_left` no longer reports a run glued to Thai; that fragment is
   `mixed_script`, so the two flags never describe the same text.
 - `english_left` is strict: only links, handles and short codes may stay Latin,

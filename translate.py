@@ -22,6 +22,7 @@ import config as config_module
 import glossary
 import llm
 import pipeline
+import pricing
 import srtio
 import verify
 
@@ -287,13 +288,32 @@ def write_report_for(
     return path
 
 
+def _usage_text(usage: llm.Usage, detail: bool = True) -> str:
+    """Tokens, optionally split, and the cost when the provider reported one.
+
+    `completion_tokens` already includes `reasoning_tokens`, so reasoning is
+    shown as part of the output rather than added to it.
+    """
+    tokens = usage.prompt_tokens + usage.completion_tokens
+    text = f"{tokens:,} tokens"
+    if detail and tokens:
+        parts = [f"{usage.prompt_tokens:,} in", f"{usage.completion_tokens:,} out"]
+        if usage.reasoning_tokens:
+            parts.append(f"{usage.reasoning_tokens:,} reasoning")
+        if usage.cached_tokens:
+            parts.append(f"{usage.cached_tokens:,} cached")
+        text += " (" + ", ".join(parts) + ")"
+    if usage.cost_usd is not None:
+        text += f" ${usage.cost_usd:.4f}"
+    return text
+
+
 def _summary(
     source: Path,
     target: Path,
     result: pipeline.TranslatedFile,
     notes: bible.Notes | None = None,
 ) -> str:
-    tokens = result.usage.prompt_tokens + result.usage.completion_tokens
     count = len(result.subtitles)
     parts = [
         f"{source.name} -> {target.name}",
@@ -303,7 +323,7 @@ def _summary(
         parts.append(f"{len(result.dropped)} dropped")
     if result.failures:
         parts.append(f"{len(result.failures)} FAILED")
-    parts.append(f"{tokens} tokens")
+    parts.append(_usage_text(result.usage))
     if notes is not None and notes.has_bible:
         parts.append(f"bible {len(notes.bible):,} chars")
     return "  ".join(parts)
@@ -316,6 +336,10 @@ def _dry_run(
 ) -> int:
     """Report what the run would do. Needs no API key and makes no calls."""
     notes = notes or {}
+    price = pricing.fetch_price(settings.llm.model, settings.llm.base_url)
+    if price is None:
+        price = (settings.llm.input_usd_per_mtok, settings.llm.output_usd_per_mtok)
+    input_price, output_price = price
     status = 0
     for name in args.files:
         source = Path(name)
@@ -335,16 +359,20 @@ def _dry_run(
             range_=args.range_,
             bible=notes[source].bible if source in notes else "",
             terms=notes[source].terms if source in notes else (),
-            input_usd_per_mtok=settings.llm.input_usd_per_mtok,
-            output_usd_per_mtok=settings.llm.output_usd_per_mtok,
+            input_usd_per_mtok=input_price,
+            output_usd_per_mtok=output_price,
         )
         dropped = f", {estimate.dropped} dropped" if estimate.dropped else ""
         batches = "batch" if estimate.batches == 1 else "batches"
         entries = "entry" if estimate.entries == 1 else "entries"
+        if estimate.cost_usd:
+            cost = f"~${estimate.cost_usd:.4f} (excludes reasoning)"
+        else:
+            cost = "cost unknown"
         print(
             f"{source.name}: {estimate.entries} {entries}{dropped} in "
             f"{estimate.batches} {batches}, ~{estimate.prompt_tokens:,} + "
-            f"{estimate.completion_tokens:,} tokens, ~${estimate.cost_usd:.4f}"
+            f"{estimate.completion_tokens:,} tokens, {cost}"
         )
     return status
 
@@ -481,7 +509,7 @@ def main(argv: list[str] | None = None) -> int:
     status = 0
     failed_files = 0
     entries = 0
-    tokens = 0
+    usage = llm.Usage()
     leftover = 0
 
     for number, source in enumerate(sources, 1):
@@ -506,7 +534,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         entries += len(result.subtitles)
-        tokens += result.usage.prompt_tokens + result.usage.completion_tokens
+        usage = usage + result.usage
         leftover += len(result.failures)
 
         print(_summary(source, target, result, notes.get(source)))
@@ -520,11 +548,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  report: {report}", file=sys.stderr)
 
     if len(sources) > 1:
-        print(_total(len(sources), failed_files, entries, leftover, tokens))
+        print(_total(len(sources), failed_files, entries, leftover, usage))
     return status
 
 
-def _total(files: int, failed: int, entries: int, leftover: int, tokens: int) -> str:
+def _total(
+    files: int, failed: int, entries: int, leftover: int, usage: llm.Usage
+) -> str:
     """One line for the whole run, so 20 files do not hide the totals."""
     parts = [f"{files} files", f"{files - failed} translated"]
     if failed:
@@ -532,7 +562,7 @@ def _total(files: int, failed: int, entries: int, leftover: int, tokens: int) ->
     parts.append(f"{entries} {'entry' if entries == 1 else 'entries'}")
     if leftover:
         parts.append(f"{leftover} left in English")
-    parts.append(f"{tokens:,} tokens")
+    parts.append(_usage_text(usage, detail=False))
     return "total: " + "  ".join(parts)
 
 

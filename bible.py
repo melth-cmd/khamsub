@@ -456,10 +456,7 @@ def bible_from_mapping(
 
 
 def _add_usage(total: llm.Usage, extra: llm.Usage) -> llm.Usage:
-    return llm.Usage(
-        prompt_tokens=total.prompt_tokens + extra.prompt_tokens,
-        completion_tokens=total.completion_tokens + extra.completion_tokens,
-    )
+    return total + extra
 
 
 def _ask(

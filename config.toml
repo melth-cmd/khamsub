@@ -10,8 +10,10 @@ timeout_s = 120
 max_retries = 3
 wire_format = "tagged"           # or "json"
 
-# USD per million tokens, used only for --dry-run cost estimates.
-# OpenRouter list price for the model above; update if you change models.
+# USD per million tokens, used only for --dry-run cost estimates when the
+# provider's published price cannot be fetched. OpenRouter is asked for the live
+# price first (its list price changes by time of day), and a real run reports the
+# exact cost it was charged, so these do not need to be kept up to date.
 input_usd_per_mtok = 0.30
 output_usd_per_mtok = 1.20
 

@@ -296,11 +296,7 @@ def translate_subtitles(
             current=batch_current,
             **runner_kwargs,
         )
-        result.usage = Usage(
-            prompt_tokens=result.usage.prompt_tokens + batch_result.usage.prompt_tokens,
-            completion_tokens=result.usage.completion_tokens
-            + batch_result.usage.completion_tokens,
-        )
+        result.usage = result.usage + batch_result.usage
 
         for entry_result in batch_result.entries:
             restored = tags.restore(
@@ -524,10 +520,7 @@ def retranslate_flagged(
             )
 
     result.results = sorted(by_index.values(), key=lambda entry: entry.index)
-    result.usage = Usage(
-        prompt_tokens=result.usage.prompt_tokens + fixed.usage.prompt_tokens,
-        completion_tokens=result.usage.completion_tokens + fixed.usage.completion_tokens,
-    )
+    result.usage = result.usage + fixed.usage
     result.fixed = list(indexes)
     result.sources.update(fixed.sources)
     result.subtitles = _rebuild(

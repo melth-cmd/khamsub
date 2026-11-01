@@ -521,8 +521,74 @@ def build_messages(
 
 @dataclass(frozen=True)
 class Usage:
+    """What a call cost, as the provider reports it.
+
+    `completion_tokens` already includes `reasoning_tokens`, so reasoning is a
+    subset and must not be added on. `cost_usd` is None when the provider does
+    not report a price, which is anything other than OpenRouter.
+    """
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    reasoning_tokens: int = 0
+    cached_tokens: int = 0
+    cost_usd: float | None = None
+
+    def __add__(self, other: "Usage") -> "Usage":
+        return Usage(
+            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
+            completion_tokens=self.completion_tokens + other.completion_tokens,
+            reasoning_tokens=self.reasoning_tokens + other.reasoning_tokens,
+            cached_tokens=self.cached_tokens + other.cached_tokens,
+            cost_usd=_add_cost(self.cost_usd, other.cost_usd),
+        )
+
+
+def _add_cost(left: float | None, right: float | None) -> float | None:
+    """Sum two costs, keeping whichever is known when only one is."""
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return left + right
+
+
+def _reported(obj: object, name: str, default=None):
+    """A field from a provider object, including ones the SDK did not model.
+
+    OpenRouter adds `cost` and the `*_tokens_details` blocks. A typed SDK may
+    keep them in `model_extra` rather than as attributes, so both are checked.
+    """
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    value = getattr(obj, name, None)
+    if value is None:
+        extra = getattr(obj, "model_extra", None) or {}
+        value = extra.get(name)
+    return default if value is None else value
+
+
+def usage_from_response(response: object) -> Usage:
+    """The usage block of a reply, including reasoning tokens and the cost.
+
+    Everything here is optional: a provider that reports only token counts
+    yields a Usage with zeros and no cost, which the summary prints honestly.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return Usage()
+    completion_details = _reported(usage, "completion_tokens_details")
+    prompt_details = _reported(usage, "prompt_tokens_details")
+    cost = _reported(usage, "cost")
+    return Usage(
+        prompt_tokens=int(_reported(usage, "prompt_tokens", 0) or 0),
+        completion_tokens=int(_reported(usage, "completion_tokens", 0) or 0),
+        reasoning_tokens=int(_reported(completion_details, "reasoning_tokens", 0) or 0),
+        cached_tokens=int(_reported(prompt_details, "cached_tokens", 0) or 0),
+        cost_usd=float(cost) if cost is not None else None,
+    )
 
 
 @dataclass(frozen=True)
@@ -686,11 +752,4 @@ class OpenRouterClient:
         if not choices:
             raise BadResponse("reply contained no choices")
         text = choices[0].message.content or ""
-        usage = getattr(response, "usage", None)
-        return Completion(
-            text=text,
-            usage=Usage(
-                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
-            ),
-        )
+        return Completion(text=text, usage=usage_from_response(response))
