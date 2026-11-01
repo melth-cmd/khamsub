@@ -9,9 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- `--dry-run` asks OpenRouter for the model's current price instead of trusting
-  `config.toml`, and says the estimate excludes reasoning tokens. `config.toml`
-  prices are now only a fallback for providers that publish no price list.
+- `--dry-run` reports input and output tokens and cost on separate lines, and
+  asks OpenRouter for the model's current price instead of trusting
+  `config.toml`. It does not pretend to know the reasoning bill: it says so, and
+  shows what reasoning cost on `samples/coverage.srt` (2.3x the visible output)
+  as an illustration. `config.toml` prices are now only a fallback for providers
+  that publish no price list.
 - A finished run reports prompt, completion, reasoning and cached tokens, plus
   the exact cost the provider charged (`usage.cost`), so a run can be priced
   without a price table and a reasoning model can be told apart from a chatty one.

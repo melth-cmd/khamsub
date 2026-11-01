@@ -745,7 +745,7 @@ def test_missing_notes_hint():
 
 def _prompt_tokens(out: str) -> int:
     """The ~input-token number from a --dry-run line."""
-    match = re.search(r"~([\d,]+) \+", out)
+    match = re.search(r"input\s+~([\d,]+) tokens", out)
     return int(match.group(1).replace(",", ""))
 
 
@@ -1058,7 +1058,7 @@ def test_a_dry_run_uses_the_published_price(project, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert status == 0
     assert "$" in out
-    assert "(excludes reasoning)" in out
+    assert "input" in out and "output" in out and "reasoning" in out
 
 
 def test_a_dry_run_falls_back_to_the_configured_price(project, capsys):

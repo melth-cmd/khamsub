@@ -365,16 +365,68 @@ def _dry_run(
         dropped = f", {estimate.dropped} dropped" if estimate.dropped else ""
         batches = "batch" if estimate.batches == 1 else "batches"
         entries = "entry" if estimate.entries == 1 else "entries"
-        if estimate.cost_usd:
-            cost = f"~${estimate.cost_usd:.4f} (excludes reasoning)"
-        else:
-            cost = "cost unknown"
         print(
             f"{source.name}: {estimate.entries} {entries}{dropped} in "
-            f"{estimate.batches} {batches}, ~{estimate.prompt_tokens:,} + "
-            f"{estimate.completion_tokens:,} tokens, {cost}"
+            f"{estimate.batches} {batches}"
         )
+        _print_estimate(estimate, input_price, output_price)
     return status
+
+
+# Reasoning tokens per visible output token, measured on samples/coverage.srt:
+# one 6-cue run spent 347 reasoning tokens for 148 visible ones. It is only an
+# illustration, not a prediction -- a reasoning model decides this for itself and
+# the figure moves with the prompt and the model -- but the estimate should not
+# quietly ignore what was 70% of the bill on that run.
+REASONING_PER_OUTPUT = 2.3
+
+
+def _print_estimate(
+    estimate: pipeline.Estimate, input_price: float, output_price: float
+) -> None:
+    """The estimate, split so the reasoning gap is visible instead of hidden."""
+    priced = bool(input_price or output_price)
+    reasoning_tokens = int(estimate.completion_tokens * REASONING_PER_OUTPUT)
+    reasoning_cost = reasoning_tokens / 1e6 * output_price
+
+    def money(tokens: int, price: float) -> str:
+        if not price:
+            return ""
+        return f"  ~${tokens / 1e6 * price:.4f}  (${price:.2f}/Mtok)"
+
+    print(
+        f"  input      ~{estimate.prompt_tokens:,} tokens"
+        f"{money(estimate.prompt_tokens, input_price)}"
+    )
+    print(
+        f"  output     ~{estimate.completion_tokens:,} tokens"
+        f"{money(estimate.completion_tokens, output_price)}"
+    )
+    print(
+        "  reasoning  not estimated: a reasoning model bills thinking at the "
+        "output rate."
+    )
+    print(
+        f"             At {REASONING_PER_OUTPUT:g}x the visible output (what "
+        "samples/coverage.srt spent)"
+    )
+    if output_price:
+        print(
+            f"             that is ~{reasoning_tokens:,} tokens, "
+            f"~${reasoning_cost:.4f} more. Your model may differ."
+        )
+    else:
+        print(f"             that is ~{reasoning_tokens:,} more output tokens.")
+    if priced:
+        print(
+            f"  total      ~${estimate.cost_usd:.4f} excluding reasoning, "
+            f"~${estimate.cost_usd + reasoning_cost:.4f} at that ratio"
+        )
+    else:
+        print(
+            "  total      cost unknown: no published price for this model and "
+            "none configured"
+        )
 
 
 def _bible_summary(
