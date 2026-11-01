@@ -7,9 +7,14 @@ A small command-line tool that turns English `.srt` subtitles into Thai with an
 AI model (OpenRouter by default).
 
 - Only the subtitle text goes to the model. Numbers and timestamps never change.
+- Everything is rendered in Thai: names, brands, film and song titles, speaker
+  labels and acronyms. Only numbers, URLs, @handles, e-mail and short
+  letter-digit codes (under 5 characters, like `K9`) stay Latin.
 - Reruns use a cache, so finished lines are not paid for twice.
 - A story bible and a glossary keep names, pronouns and politeness consistent.
 - A report shows what the checks found. Nothing is changed unless you ask.
+- A 60-cue sample with a rubric lives in `samples/`, for comparing models before
+  trusting one with a whole film.
 
 ## Install
 
@@ -52,7 +57,8 @@ the output is redirected to a file, one line is printed per batch instead.
       other files still run.
 
     python translate.py "Show.en.srt" --dry-run
-      Show the number of batches and a rough cost. No API call, no key needed.
+      Show the batches, the input and output cost, and an estimate of the
+      reasoning. No API call, no key needed.
 
     python translate.py "Show.en.srt" --bible-only
       Read the whole script once and write the story bible and glossary, then
@@ -82,7 +88,7 @@ the output is redirected to a file, one line is printed per batch instead.
       Use another config file.
 
     python translate.py "Show.en.srt" -v
-      Show each batch as it runs.
+      Add per-batch log detail. The progress line is shown either way.
 
     python translate.py "Show.en.srt" --force
       Also accept inputs that look translated (`*.th.srt`).
@@ -108,15 +114,24 @@ The sidecar files drop the `.en.` part, so `Show.en.srt` gives `Show.report.txt`
 Open the `.report.txt` after a run. It says how many lines were checked and
 lists any problems with the line number, the English and the Thai. Common flags:
 
-    english_left       English words the glossary does not say to keep
-    glossary_missing   a name or term is not written the way the glossary says
-    line_count         the translation has a different number of lines
-    dashes_lost        a speaker dash such as "- " disappeared
-    failed             the line could not be translated and stays English
+    failed                 the line could not be translated and stays English
+    empty                  nothing came back
+    short / long           the length is far from the source's
+    line_count             the translation has a different number of lines
+    bleed                  the first line repeats a line from the cue above
+    dashes_lost            a speaker dash such as "- " disappeared
+    tag_mismatch           formatting tags are missing or invented
+    lost_token             a number, URL or code from the source is missing
+    glossary_missing       a term is not written the way the glossary says
+    glossary_inconsistent  a term that should be Thai is still English
+    mixed_script           Latin letters glued to Thai, a mangled fragment
+    english_left           English left in the translation
 
-Nothing is fixed automatically. To let the model try the flagged lines again,
-run with `--fix`. For advice without any change, run with `--review`; its
-suggestions appear at the top of the report.
+Line layout is repaired automatically: breaks are re-split, speaker dashes are
+put back, and a translation with more lines than its source is retried once and
+then merged down. Everything else is reported. To let the model try the flagged
+lines again, run with `--fix`. For advice without any change, run with
+`--review`; its suggestions appear at the top of the report.
 
 ## The bible and glossary
 
@@ -124,8 +139,10 @@ Both files are plain text and made to be edited by hand.
 
 - `bible.md` describes the story and the characters, including the Thai
   pronouns and particles each person should use.
-- `glossary.toml` says how each name or term is written: keep it in English,
-  spell it in Thai letters, or translate it.
+- `glossary.toml` says how each name or term is written: spell it in Thai
+  letters (the default), translate it, or keep it in English. The bible pass
+  only writes `keep` for numbers, links, handles and short codes, because
+  everything else is meant to be Thai; a hand edit can still keep any term.
 
 A normal run reads both files again, so an edit applies to the next run. Editing
 one glossary term re-translates only the lines that use it. Editing the bible
@@ -163,6 +180,9 @@ key here:
 - Some lines are still English — open the report, or run again with `--fix`.
 - `rate_limited` — the tool waits and retries. Lower `[batch] size` if it
   happens often.
+- The cost estimate looks low — it leaves out reasoning tokens, which a
+  reasoning model spends freely. A finished run prints the exact cost it was
+  charged, so compare against that.
 - "no story bible for ..." — that is only a hint. The tool works without one;
   `--bible-only` makes one.
 
@@ -171,6 +191,39 @@ key here:
     0   finished (lines left in English are still exit 0: check the report)
     1   a file failed with an error; the other files still ran
     2   a problem before any work: bad usage, bad config, missing file
+
+## What is where
+
+```
+khamsub/
+├── translate.py       # CLI: flags, pre-flight, run summary, --dry-run
+├── config.py          # loads and validates config.toml; builds the model client
+├── config.toml        # user settings (model, batch, prices fallback)
+├── srtio.py           # read/write .srt, encoding fallback, output + sidecar naming
+├── tags.py            # {0} placeholders: protect / check / restore formatting tags
+├── hi.py              # strip SDH descriptions ("[door slams]"), keep "[Maya]"
+├── batcher.py         # batching, context lines, --limit/--range selection
+├── llm.py             # OpenRouter client, the prompt, reply validation, usage
+├── runner.py          # one batch: retry only failures, backoff, English fallback
+├── cache.py           # per-entry JSON cache, atomic saves, cache keys
+├── bible.py           # story bible pre-pass: chunk, prompt, merge, write both files
+├── glossary.py        # terms: validate, render, parse, load; per-batch selection
+├── layout.py          # normalise wrapped source lines; rewrap/merge the translation
+├── verify.py          # checks a finished file, returns flags, writes report.txt
+├── pipeline.py        # orchestrates one file: prepare -> batch -> translate -> write
+├── progress.py        # live progress line: bar, elapsed time, ETA
+├── pricing.py         # asks the provider for the model's current price
+├── samples/
+│   ├── coverage.srt   # 60-cue sample: every behaviour fixed or argued about
+│   └── coverage.md    # the rubric for that sample, with cue numbers
+├── tests/             # one test file per module, plus conftest/helpers
+├── README.md          # this file
+├── STRUCTURE.md       # where to look for a given bug or feature
+└── CHANGELOG.md       # history
+```
+
+`STRUCTURE.md` turns that map into a lookup table: "I want to change X, open Y",
+plus the symptoms of past bugs and where each one lived.
 
 ## Development
 
