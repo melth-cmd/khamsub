@@ -123,9 +123,14 @@ All of these are **auto**: the token must appear unchanged in the translation.
 | 44 | `- UGIS.` / `- UGIS.`, acronym-only cue (#3) | rendered in Thai, **not** left English and **not** `failed` |
 | 45 | `Bullshit.`, single word (#9) | Thai only; **auto**: no Latin touching Thai (mixed_script) |
 | 46 | `42.`, number-only cue | `42` preserved. The tool sends this but does not validate it |
-| 47 | `[MUSIC PLAYING]` | unchanged; non-verbal, not validated |
+| 47 | `[MUSIC PLAYING]` | rendered in Thai inside the bracket (`[กำลังเปิดเพลง]`); left in English is acceptable but not preferred. Non-verbal, so not validated |
 | 48 | `♪ ♪` | **dropped before translation**; must be absent from the output |
 | 49 | `Mm-hmm.` | unchanged, or a natural Thai interjection |
+
+Non-verbal cues are sent but not validated, so a model can pass them with either
+choice. Translating the sound description (cue 47) follows the "everything in
+Thai" policy and reads better to a viewer, so prefer it; leaving it in English is
+not a failure. The same applies to cue 49.
 
 ### Context bleed (#10)
 
