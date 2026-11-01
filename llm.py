@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Mapping, Protocol, Sequence
 
+import layout
 import tags
 from batcher import Batch, ContextLine, SourceEntry
 
@@ -83,6 +84,7 @@ class Issue:
     # parsing:  "duplicate" | "empty"
     # identity: "missing" | "extra"
     # language: "missing_thai" | "foreign_script" | "lost_token" | "mixed_script"
+    # layout:   "extra_lines"
     # tags:     "tag_mismatch"
     # other:    "bad_response"
     index: int | None
@@ -368,6 +370,16 @@ def validate(batch: Batch, decoded: Decoded) -> list[Issue]:
                     "lost_token",
                     index,
                     f"entry [{index}] lost {'/'.join(lost)} from the translation",
+                )
+            )
+
+        extra = layout.line_count(text) - layout.line_count(source)
+        if extra > 0:
+            issues.append(
+                Issue(
+                    "extra_lines",
+                    index,
+                    f"entry [{index}] has {extra} more line(s) than the source",
                 )
             )
 

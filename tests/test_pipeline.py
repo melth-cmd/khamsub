@@ -933,3 +933,19 @@ def test_prepare_joins_a_wrapped_continuation_to_its_speaker():
 def test_prepare_leaves_an_undashed_cue_alone():
     prepared = pipeline.prepare([subtitle(1, "One.\nTwo.\nThree.")])
     assert prepared.entries == [SourceEntry(1, "One.\nTwo.\nThree.")]
+
+
+# --- extra lines are retried once (#6, #10) ---------------------------------
+
+
+def test_an_extra_line_is_retried_and_the_retry_is_used():
+    client = FakeClient(["[1] หนึ่ง\nสอง\nสาม", "[1] หนึ่ง\nสอง"])
+    result = run(client, [subtitle(1, "One.\nTwo.")])
+    assert client.call_count == 2
+    assert result.results[0].text == "หนึ่ง\nสอง"
+
+
+def test_a_clean_line_count_is_not_retried():
+    client = FakeClient(["[1] หนึ่ง\nสอง"])
+    run(client, [subtitle(1, "One.\nTwo.")])
+    assert client.call_count == 1

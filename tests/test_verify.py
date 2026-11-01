@@ -617,7 +617,7 @@ def test_layout_summary_counts_extra_lines():
     extra.rewrapped = "extra_lines"
     translated = translated_file(extra, sources={1: "One.\nTwo."})
     assert "0 of 1 multi-line entry re-split (0%)" in verify.layout_summary(translated)
-    assert "1 entry with extra lines" in verify.layout_summary(translated)
+    assert "1 entry merged down to the source line count" in verify.layout_summary(translated)
 
 
 def test_layout_summary_handles_a_plain_file():
@@ -731,3 +731,48 @@ def test_no_review_means_no_suggestion_section():
 
 def test_one_line_collapses_blank_lines_too():
     assert verify._one_line("  one\n\n two \n") == "one / two"
+
+
+# --- context bleed (#10) ----------------------------------------------------
+
+
+def test_a_line_copied_from_the_cue_above_is_flagged():
+    flag = verify.bleed_flag(
+        2,
+        "I don't know what he wants.",
+        "ฉันไม่รู้ว่าเขาต้องการอะไร",
+        "Ask him.",
+        "ฉันไม่รู้ว่าเขาต้องการอะไร\nถามเขาเอง",
+    )
+    assert flag is not None
+    assert flag.kind == "bleed"
+
+
+def test_a_repeated_refrain_is_not_bleed():
+    assert (
+        verify.bleed_flag(
+            2,
+            "Nobody is listening.",
+            "ไม่มีใครฟังอยู่",
+            "Nobody is listening.",
+            "ไม่มีใครฟังอยู่",
+        )
+        is None
+    )
+
+
+def test_a_distinct_first_line_is_not_bleed():
+    assert (
+        verify.bleed_flag(
+            2,
+            "I don't know what he wants.",
+            "ฉันไม่รู้ว่าเขาต้องการอะไร",
+            "Ask him.",
+            "ถามเขาเอง",
+        )
+        is None
+    )
+
+
+def test_the_first_cue_cannot_bleed():
+    assert verify.bleed_flag(1, "", "", "Hello.", "สวัสดี") is None

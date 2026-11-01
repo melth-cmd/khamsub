@@ -34,7 +34,9 @@ space, "-Hello." does not). This is reported through `dashes_restored`.
 Blank lines in the source do not count as lines, and a split never lands inside
 a placeholder, a bracket or a music marker.
 
-More lines than the source are left alone and reported, not "fixed".
+More lines than the source are merged back down to the source count, because a
+third line overflows the safe area in most players (#6). An undashed
+continuation is absorbed first, so the speaker structure survives the merge.
 """
 
 from __future__ import annotations
@@ -171,7 +173,8 @@ def rewrap(source: str, translated: str) -> Layout:
 
     current = _lines(translated)
     if len(current) > target:
-        return Layout(translated, "extra_lines")
+        merged = _merge_down(current, target)
+        return Layout("\n".join(merged), "extra_lines")
 
     all_dashed = all(_dash_index(line) is not None for line in source_lines)
     any_dashed = any(_dash_index(line) is not None for line in source_lines)
@@ -209,6 +212,34 @@ def rewrap(source: str, translated: str) -> Layout:
         "proportional",
         dashes_restored=restored != pieces,
     )
+
+
+def _merge_down(lines: list[str], target: int) -> list[str]:
+    """Join adjacent lines until there are `target` of them.
+
+    An undashed continuation is absorbed into the line above it first, which
+    keeps the speaker structure: a model that split one speaker over two lines
+    gets that speaker back on one. When every line carries a dash there is no
+    continuation to absorb, so the shortest adjacent pair is joined instead.
+    """
+    pieces = list(lines)
+    while len(pieces) > target:
+        join = next(
+            (
+                index
+                for index in range(1, len(pieces))
+                if _dash_index(pieces[index]) is None
+                and _dash_index(pieces[index - 1]) is not None
+            ),
+            None,
+        )
+        if join is None:
+            # Every line is a speaker turn, so there is nothing structural to
+            # absorb. Join the last pair, which is the tail the model added.
+            join = len(pieces) - 1
+        pieces[join - 1] = pieces[join - 1].rstrip() + " " + pieces[join].lstrip()
+        del pieces[join]
+    return pieces
 
 
 def _dash_index(line: str) -> int | None:

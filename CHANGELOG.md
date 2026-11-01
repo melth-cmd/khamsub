@@ -25,6 +25,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   characters, e.g. `K9`) that the translation drops is a retryable failure and a
   report flag. A longer code keeps its digits and transliterates its letters
   (`Flymiamibro22` -> `ฟลายมยเอมีโบร22`).
+- `bleed` flag: an entry whose first line repeats a line from the cue above is
+  reported, unless the two sources share that line, so a deliberate refrain is
+  not mistaken for a copy.
 - `mixed_script` check: Latin letters glued to Thai (`ทwerp`) are a retryable
   failure and a report flag, so a mangled fragment can no longer ship as advisory
   text. Kept tokens are blanked first, so a short code that legitimately touches
@@ -32,6 +35,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- A translation that comes back with more lines than the source is retried once,
+  then merged back down to the source line count, so a third line can no longer
+  overflow the safe area. An undashed continuation is absorbed into the line
+  above it first, which keeps the speaker turns intact.
 - A source cue that wrapped a speaker's continuation onto its own line is now
   joined to that speaker before translation, so the model is no longer forced to
   reproduce a stub line like `in school.`. Only cues that use a speaker dash are

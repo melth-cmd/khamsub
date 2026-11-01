@@ -12,6 +12,7 @@ Flag kinds:
   empty                nothing but whitespace, tags or placeholders came back
   short / long         the length is far from the source's (advisory)
   line_count           a different number of lines than the source
+  bleed                the first line repeats a line from the cue above
   dashes_lost          a speaker dash the source had is gone
   tag_mismatch         formatting tags are missing or invented
   lost_token           a number, link or short code from the source is missing
@@ -50,6 +51,7 @@ KINDS: tuple[str, ...] = (
     "short",
     "long",
     "line_count",
+    "bleed",
     "dashes_lost",
     "tag_mismatch",
     "lost_token",
@@ -131,6 +133,44 @@ def english_words(text: str) -> list[str]:
             seen.add(key)
             words.append(word)
     return words
+
+
+def _line_key(line: str) -> str:
+    """A line reduced to what makes two lines "the same" for a bleed check."""
+    return re.sub(r"\s+", " ", scrub(line)).strip().casefold()
+
+
+def bleed_flag(
+    index: int,
+    previous_source: str,
+    previous: str,
+    source: str,
+    translated: str,
+) -> Flag | None:
+    """A translation that opens with a line copied from the cue above.
+
+    A repeated refrain is a deliberate repetition, so the check is skipped when
+    the two sources share a line: if the source repeats, the translation should.
+    """
+    first = next((line for line in translated.split("\n") if line.strip()), "")
+    if not first.strip() or not previous.strip():
+        return None
+    earlier = {_line_key(line) for line in previous.split("\n") if line.strip()}
+    if _line_key(first) not in earlier:
+        return None
+    previous_lines = {
+        _line_key(line) for line in previous_source.split("\n") if line.strip()
+    }
+    source_lines = {_line_key(line) for line in source.split("\n") if line.strip()}
+    if previous_lines & source_lines:
+        return None
+    return Flag(
+        index,
+        "bleed",
+        "the first line repeats a line from the cue above",
+        source,
+        translated,
+    )
 
 
 def tag_mismatch(source: str, translated: str) -> str | None:
@@ -354,6 +394,8 @@ def verify_file(translated: Verifiable, terms: Sequence[glossary.Term] = ()) -> 
     """Check every entry in a finished file. Never raises on bad content."""
     verification = Verification()
     results = sorted(translated.results, key=lambda result: result.index)
+    previous_source = ""
+    previous_text = ""
 
     for result in results:
         source = translated.sources.get(result.index)
@@ -363,16 +405,22 @@ def verify_file(translated: Verifiable, terms: Sequence[glossary.Term] = ()) -> 
             )
             continue
         verification.checked += 1
-        verification.extend(
-            check_entry(
-                result.index,
-                source,
-                result.text,
-                terms,
-                ok=getattr(result, "ok", True),
-                reason=getattr(result, "reason", None),
-            )
+        flags = check_entry(
+            result.index,
+            source,
+            result.text,
+            terms,
+            ok=getattr(result, "ok", True),
+            reason=getattr(result, "reason", None),
         )
+        bleed = bleed_flag(
+            result.index, previous_source, previous_text, source, result.text
+        )
+        if bleed is not None:
+            flags.append(bleed)
+        verification.extend(flags)
+        previous_source = source
+        previous_text = result.text
 
     verification.flags.sort(key=lambda flag: (flag.index, KINDS.index(flag.kind)))
     return verification
@@ -452,7 +500,9 @@ def layout_summary(translated: Verifiable) -> str:
             f"({rate:.0f}%{detail})"
         )
     if extra:
-        parts.append(f"{_plural(extra, 'entry', 'entries')} with extra lines")
+        parts.append(
+            f"{_plural(extra, 'entry', 'entries')} merged down to the source line count"
+        )
     if unrepaired:
         parts.append(
             f"{_plural(unrepaired, 'entry', 'entries')} left merged "

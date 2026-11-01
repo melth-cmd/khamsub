@@ -21,9 +21,9 @@ def test_correct_line_count_is_untouched():
     assert result.method is None
 
 
-def test_more_lines_than_source_are_reported_not_reflowed():
+def test_more_lines_than_source_are_merged_down():
     result = layout.rewrap("One.\nTwo.", "หนึ่ง\nสอง\nสาม")
-    assert result.text == "หนึ่ง\nสอง\nสาม"
+    assert result.text == "หนึ่ง\nสอง สาม"
     assert result.method == "extra_lines"
     assert not result.rewrapped
 
@@ -376,3 +376,28 @@ def test_a_wrapped_line_behind_a_hyphen_dash_is_joined():
     assert layout.normalise_source(source) == (
         "\u2010 It's gonna be really, really good."
     )
+
+
+# --- too many lines (#6) ----------------------------------------------------
+
+
+def test_the_real_extra_line_case_merges_back_to_two():
+    # PEN15 S02E12 [427]: a two-line source came back as three lines.
+    source = "- Oh, my God.\n- What? Stop. Stop."
+    translated = "\u2010 แม่เหรอ\nโอ้พระเจ้า\n\u2010 อะไร หยุด หยุด"
+    result = layout.rewrap(source, translated)
+    assert result.text == "\u2010 แม่เหรอ โอ้พระเจ้า\n\u2010 อะไร หยุด หยุด"
+    assert result.method == "extra_lines"
+
+
+def test_a_continuation_is_absorbed_before_a_speaker_turn():
+    source = "- One.\n- Two."
+    translated = "- หนึ่ง\nสอง\n- สาม"
+    assert layout.rewrap(source, translated).text == "- หนึ่ง สอง\n- สาม"
+
+
+def test_merging_down_is_idempotent():
+    source = "- One.\n- Two."
+    translated = "- หนึ่ง\nสอง\n- สาม"
+    once = layout.rewrap(source, translated).text
+    assert layout.rewrap(source, once).text == once

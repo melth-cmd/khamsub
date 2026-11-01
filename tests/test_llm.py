@@ -663,3 +663,19 @@ def test_usage_adds_every_field_and_keeps_a_known_cost():
 def test_usage_adds_two_known_costs():
     total = llm.Usage(cost_usd=0.1) + llm.Usage(cost_usd=0.2)
     assert total.cost_usd == pytest.approx(0.3)
+
+
+# --- more lines than the source ---------------------------------------------
+
+
+def test_validate_reports_more_lines_than_the_source():
+    batch = make_batches([SourceEntry(1, "One.\nTwo.")], size=1)[0]
+    decoded = llm.decode_entries("[1] หนึ่ง\nสอง\nสาม")
+    kinds = [issue.kind for issue in llm.validate(batch, decoded)]
+    assert "extra_lines" in kinds
+
+
+def test_validate_accepts_the_source_line_count():
+    batch = make_batches([SourceEntry(1, "One.\nTwo.")], size=1)[0]
+    decoded = llm.decode_entries("[1] หนึ่ง\nสอง")
+    assert llm.validate(batch, decoded) == []
