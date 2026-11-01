@@ -40,6 +40,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   character. On 16 cached runs this removed every mid-word cut (362 entries per
   6402 multi-line entries are now left merged, 90% of them short enough to fit a
   single line).
+- A URL or e-mail followed by sentence punctuation no longer takes that
+  punctuation into the token it must keep. A correct translation that writes Thai
+  punctuation after a link was reported as `lost_token`, retried, and could fall
+  back to English.
 
 ## [0.1.0] - 2026-10-30
 

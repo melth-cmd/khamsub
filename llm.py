@@ -213,6 +213,12 @@ _URL_RE = re.compile(r"(?:https?://|www\.)[^\s<>\"')]+", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _HANDLE_RE = re.compile(r"@[A-Za-z0-9_]{2,}")
 _DIGITS_RE = re.compile(r"\d+")
+# Sentence punctuation after a token belongs to the sentence, not to the token:
+# "See https://example.com, then" must still match when the translation writes
+# Thai punctuation there. Without this a correct translation looks like a lost
+# token and is retried until it falls back to English.
+_TRAILING_PUNCT = ".,;:!?…"
+
 # Letters and digits mixed in one token: K9, 21L4, Flymiamibro22.
 _MIXED_RE = re.compile(
     r"(?<![A-Za-z0-9])"
@@ -231,13 +237,20 @@ def _token_text(text: str) -> str:
     return tags.strip_markup(text)
 
 
+def _trim_token(token: str) -> str:
+    """A matched token without the sentence punctuation that follows it."""
+    return token.rstrip(_TRAILING_PUNCT)
+
+
 def kept_verbatim(text: str) -> list[str]:
     """Latin tokens the translation must contain unchanged, in order."""
     cleaned = _token_text(text)
     found: list[str] = []
     for pattern in (_URL_RE, _EMAIL_RE, _HANDLE_RE):
         for match in pattern.finditer(cleaned):
-            found.append(match.group(0))
+            token = _trim_token(match.group(0))
+            if token:
+                found.append(token)
     for match in _MIXED_RE.finditer(cleaned):
         token = match.group(0)
         if len(token) < KEPT_CODE_MIN_LENGTH:

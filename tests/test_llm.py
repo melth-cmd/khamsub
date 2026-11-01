@@ -521,6 +521,35 @@ def test_a_link_must_come_back_unchanged():
     assert llm.missing_kept(source, "ดูที่ example.com") == [source]
 
 
+def test_a_url_does_not_take_the_comma_after_it():
+    assert llm.kept_verbatim("See https://example.com, then") == [
+        "https://example.com"
+    ]
+
+
+def test_an_email_does_not_take_the_period_after_it():
+    assert llm.kept_verbatim("Write to desk@nightshift.example.com.") == [
+        "desk@nightshift.example.com",
+        "@nightshift",
+    ]
+
+
+def test_a_url_keeps_the_slash_that_belongs_to_it():
+    assert llm.kept_verbatim("See https://example.com/, then") == [
+        "https://example.com/"
+    ]
+
+
+def test_a_url_followed_by_thai_punctuation_is_not_a_lost_token():
+    source = "That's https://nightshift.example.com, right?"
+    assert llm.missing_kept(source, "นั่น https://nightshift.example.com ใช่ไหม") == []
+
+
+def test_an_email_followed_by_thai_punctuation_is_not_a_lost_token():
+    source = "Write to maya@nightshift.example.com."
+    assert llm.missing_kept(source, "เขียนถึง maya@nightshift.example.com") == []
+
+
 def test_validate_reports_a_lost_number():
     from batcher import make_batches, SourceEntry
 
