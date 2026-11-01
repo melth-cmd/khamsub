@@ -172,3 +172,6 @@ The tests need `pytest`, which is not needed to run the tool:
 
     uv pip install -r requirements-dev.txt
     pytest -q
+
+`STRUCTURE.md` maps every file to what it controls, and lists where to look for
+a given kind of bug or feature. Read it before your first change.
