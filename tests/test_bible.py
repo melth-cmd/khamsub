@@ -198,6 +198,13 @@ def test_term_from_mapping_reads_the_three_actions():
     ) == glossary.Term("wizard", "translate", "พ่อมด")
 
 
+def test_an_acronym_term_is_recorded_with_its_thai_form():
+    term = bible.term_from_mapping(
+        {"en": "NASA", "action": "transliterate", "th": "นาซา"}
+    )
+    assert term == glossary.Term("NASA", "transliterate", "นาซา")
+
+
 def test_an_unknown_action_with_thai_becomes_transliterate(caplog):
     with caplog.at_level("WARNING"):
         term = bible.term_from_mapping({"en": "Gandalf", "action": "romanise", "th": "แกนดัล์ฟ"})
@@ -327,6 +334,17 @@ def test_notes_prompt_asks_for_the_three_actions_and_json():
         assert action in prompt
     assert "JSON object" in prompt
     assert "Thai script" in prompt
+
+
+def test_notes_prompt_records_acronyms_with_the_same_rule_as_the_translator():
+    prompt = bible.NOTES_SYSTEM_PROMPT
+    assert "acronyms" in prompt
+    assert "AIM -> เอม" in prompt
+    assert "NASA -> นาซา" in prompt
+
+
+def test_merge_prompt_keeps_acronyms_as_terms():
+    assert "acronym" in bible.MERGE_SYSTEM_PROMPT
 
 
 def test_notes_messages_carry_title_year_and_script():

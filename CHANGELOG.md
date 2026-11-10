@@ -21,6 +21,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- The bible pass now records acronyms with the same letters-or-word rule as the
+  translator, so the glossary and the prompt agree on the sound (AIM -> เอม, NASA
+  -> นาซา). A live `--bible-only` run on the coverage sample writes AOL, AIM,
+  NASA, FBI, JBL, UGIS and FM into the glossary with Thai spellings (#14).
 - A reply that merges a multi-line cue and comes back far shorter is asked once
   more, then kept and flagged. A merge that is merely compact is common, and
   leaving it in English would be the worse guess.

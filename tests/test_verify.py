@@ -117,6 +117,20 @@ def test_glossary_term_not_in_the_source_is_ignored():
     assert verify.glossary_flags(1, "Hello.", "สวัสดี", [term(*GANDALF)]) == []
 
 
+def test_a_transliterated_acronym_must_use_the_glossary_spelling():
+    aim = term("AIM", "transliterate", "เอม")
+    assert verify.glossary_flags(1, "AIM is down.", "เอมล่ม", [aim]) == []
+    flags = verify.glossary_flags(1, "AIM is down.", "เอไอเอ็มล่ม", [aim])
+    assert [flag.kind for flag in flags] == ["glossary_missing"]
+
+
+def test_a_kept_acronym_must_stay_in_english():
+    fbi = term("FBI", "keep")
+    assert verify.glossary_flags(1, "The FBI called.", "FBI โทรมา", [fbi]) == []
+    flags = verify.glossary_flags(1, "The FBI called.", "เอฟบีไอโทรมา", [fbi])
+    assert [flag.kind for flag in flags] == ["glossary_missing"]
+
+
 def test_glossary_check_reports_the_entry_it_belongs_to():
     flags = verify.glossary_flags(7, "NASA is here.", "อยู่ที่นี่", [term(*NASA)])
     assert flags[0].index == 7

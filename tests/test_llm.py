@@ -119,6 +119,12 @@ def test_build_messages_includes_bible_and_glossary():
     assert "[GLOSSARY]\nNASA = keep" in user
 
 
+def test_an_acronym_override_reaches_the_request():
+    batch = make_batches([SourceEntry(1, "AIM is down.")], size=1)[0]
+    user = llm.build_messages(batch, glossary="AIM = transliterate: เอม")[1]["content"]
+    assert "[GLOSSARY]\nAIM = transliterate: เอม" in user
+
+
 def test_build_messages_marks_context_as_untranslatable():
     batch = make_batch(2)
     batch.before = [ContextLine(0, "Earlier.")]
@@ -163,6 +169,18 @@ def test_system_prompt_states_the_alphanumeric_threshold():
     prompt = llm.SYSTEM_PROMPT
     assert "shorter than 5" in prompt
     assert "K191" in prompt
+
+
+def test_system_prompt_gives_the_letters_and_word_acronym_examples():
+    prompt = llm.SYSTEM_PROMPT
+    for example in (
+        "AOL -> เอโอเอล",
+        "JBL -> เจบีแอล",
+        "FBI agent -> เอฟบีไอ เอเจนต์",
+        "AIM -> เอม",
+        "NASA -> นาซา",
+    ):
+        assert example in prompt, example
 
 
 def test_system_prompt_allows_an_official_title_but_forbids_inventing_one():

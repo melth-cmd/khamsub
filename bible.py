@@ -227,14 +227,16 @@ Report:
   register. A speaker this part cannot identify is not a character: never write
   "first speaker", "the man on the phone" or "he". Another part, or the merge,
   will name them.
-- terms: names, places, brands, titles, ranks and technical words that must be
-  spelled the same way every time. Give each one an action:
+- terms: names, places, brands, titles, ranks, technical words and acronyms that
+  must be spelled the same way every time. Give each one an action:
   "transliterate" (Thai phonetic spelling in th), "translate" (Thai meaning in
   th) or "keep" (stays in English).
   Transliterate by default: names, brands and titles all end up in Thai script,
   because a Thai audience reads Thai. Use "translate" for a title with a known
   Thai name. Reserve "keep" for numbers, URLs, @handles and short letter-digit
   codes such as K9. Leave `th` empty for "keep".
+  An acronym is written the way a Thai speaker says it: spell the letters
+  (JBL -> เจบีแอล) or read it as a word (AIM -> เอม, NASA -> นาซา).
 
 Reply with one JSON object and nothing else, exactly in this shape:
 {"summary": "...", "notes": "...", "characters": [{"name": "...", "gender": "male", "age": "40s", "role": "...", "relationships": "...", "register": "..."}], "terms": [{"en": "...", "action": "transliterate", "th": "..."}]}
@@ -254,7 +256,7 @@ Merge them into one story bible for a Thai translator.
   character whose dialogue matches, or drop it. Never output a person called
   "He", "She" or "First speaker".
 - One entry per term, with one action and one spelling. Drop a term that appears
-  once in passing and is not a name, place, brand, rank or technical word.
+  once in passing and is not a name, place, brand, rank, technical word or acronym.
 - Everything is in English except Thai suggestions, as before.
 - Never invent facts that the parts do not support.
 
