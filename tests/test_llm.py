@@ -255,15 +255,22 @@ def client_raising(exc: Exception) -> llm.OpenRouterClient:
     return client
 
 
-def client_returning(content: str, prompt_tokens: int = 7, completion_tokens: int = 5):
+def client_returning(
+    content: str,
+    prompt_tokens: int = 7,
+    completion_tokens: int = 5,
+    provider: str | None = None,
+):
     client = object.__new__(llm.OpenRouterClient)
     client.model = "test/model"
     client.temperature = 0.25
+    extra = {} if provider is None else {"provider": provider}
     response = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
         usage=SimpleNamespace(
             prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
         ),
+        **extra,
     )
     client._client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **kw: response))
@@ -276,6 +283,15 @@ def test_complete_returns_text_and_usage():
     assert completion.text == "[1] สวัสดี"
     assert completion.usage.prompt_tokens == 7
     assert completion.usage.completion_tokens == 5
+
+
+def test_complete_reads_the_provider_that_served_it():
+    completion = client_returning("[1] สวัสดี", provider="DeepSeek").complete([])
+    assert completion.provider == "DeepSeek"
+
+
+def test_complete_without_a_provider_leaves_it_empty():
+    assert client_returning("[1] สวัสดี").complete([]).provider == ""
 
 
 def test_rate_limit_becomes_rate_limited_with_retry_after():

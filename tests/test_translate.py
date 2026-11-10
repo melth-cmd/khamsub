@@ -1100,6 +1100,30 @@ def test_the_summary_splits_the_tokens(project, fake, capsys):
     assert "$0.0025" in out
 
 
+def test_the_summary_names_the_provider(project, fake, capsys):
+    from llm import Completion
+
+    fake.queue(Completion(text=REPLIES, provider="DeepSeek"))
+    run(project, fake, copy(project, "sample.en.srt"))
+    assert " via DeepSeek" in capsys.readouterr().out
+
+
+def test_a_mixed_run_lists_each_provider_in_the_total(project, fake, capsys):
+    from llm import Completion
+
+    fake.queue(Completion(text=REPLIES, provider="DeepInfra"))
+    fake.queue(Completion(text=REPLIES, provider="DeepSeek"))
+    run(project, fake, copy(project, "a.en.srt"), copy(project, "b.en.srt"))
+    out = capsys.readouterr().out
+    assert "via DeepInfra (1 request), DeepSeek (1 request)" in out
+
+
+def test_no_provider_means_no_via(project, fake, capsys):
+    fake.queue(REPLIES)
+    run(project, fake, copy(project, "sample.en.srt"))
+    assert " via " not in capsys.readouterr().out
+
+
 # --- progress (#5) ----------------------------------------------------------
 
 

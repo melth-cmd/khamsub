@@ -13,7 +13,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Callable, Sequence
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import batcher
@@ -291,8 +292,12 @@ def write_report_for(
     return path
 
 
-def _usage_text(usage: llm.Usage, detail: bool = True) -> str:
-    """Tokens, optionally split, and the cost when the provider reported one.
+def _usage_text(
+    usage: llm.Usage,
+    detail: bool = True,
+    providers: Mapping[str, int] | None = None,
+) -> str:
+    """Tokens, optionally split, the cost when known, and who served the requests.
 
     `completion_tokens` already includes `reasoning_tokens`, so reasoning is
     shown as part of the output rather than added to it.
@@ -308,7 +313,24 @@ def _usage_text(usage: llm.Usage, detail: bool = True) -> str:
         text += " (" + ", ".join(parts) + ")"
     if usage.cost_usd is not None:
         text += f" ${usage.cost_usd:.4f}"
-    return text
+    return text + _via_text(providers or {})
+
+
+def _via_text(providers: Mapping[str, int]) -> str:
+    """Who served the requests, or nothing when the provider did not say.
+
+    One provider is named on its own; a mixed run shows how many requests each
+    served, because the price differs between them.
+    """
+    if not providers:
+        return ""
+    if len(providers) == 1:
+        return f" via {next(iter(providers))}"
+    shown = []
+    for name, count in sorted(providers.items()):
+        unit = "request" if count == 1 else "requests"
+        shown.append(f"{name} ({count} {unit})")
+    return " via " + ", ".join(shown)
 
 
 def _summary(
@@ -326,7 +348,7 @@ def _summary(
         parts.append(f"{len(result.dropped)} dropped")
     if result.failures:
         parts.append(f"{len(result.failures)} FAILED")
-    parts.append(_usage_text(result.usage))
+    parts.append(_usage_text(result.usage, providers=result.providers))
     if notes is not None and notes.has_bible:
         parts.append(f"bible {len(notes.bible):,} chars")
     return "  ".join(parts)
@@ -565,6 +587,7 @@ def main(argv: list[str] | None = None) -> int:
     failed_files = 0
     entries = 0
     usage = llm.Usage()
+    providers: Counter[str] = Counter()
     leftover = 0
 
     for number, source in enumerate(sources, 1):
@@ -592,6 +615,7 @@ def main(argv: list[str] | None = None) -> int:
 
         entries += len(result.subtitles)
         usage = usage + result.usage
+        providers.update(result.providers)
         leftover += len(result.failures)
 
         print(_summary(source, target, result, notes.get(source)))
@@ -605,12 +629,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  report: {report}", file=sys.stderr)
 
     if len(sources) > 1:
-        print(_total(len(sources), failed_files, entries, leftover, usage))
+        print(_total(len(sources), failed_files, entries, leftover, usage, providers))
     return status
 
 
 def _total(
-    files: int, failed: int, entries: int, leftover: int, usage: llm.Usage
+    files: int,
+    failed: int,
+    entries: int,
+    leftover: int,
+    usage: llm.Usage,
+    providers: Mapping[str, int] | None = None,
 ) -> str:
     """One line for the whole run, so 20 files do not hide the totals."""
     parts = [f"{files} files", f"{files - failed} translated"]
@@ -619,7 +648,7 @@ def _total(
     parts.append(f"{entries} {'entry' if entries == 1 else 'entries'}")
     if leftover:
         parts.append(f"{leftover} left in English")
-    parts.append(_usage_text(usage, detail=False))
+    parts.append(_usage_text(usage, detail=False, providers=providers))
     return "total: " + "  ".join(parts)
 
 

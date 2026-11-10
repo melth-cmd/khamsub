@@ -67,6 +67,21 @@ def test_usage_accumulates_across_calls(fake_client):
     assert result.usage.completion_tokens == 7
 
 
+def test_the_batch_records_who_served_each_request(fake_client):
+    fake_client.queue(
+        llm.Completion("[1] สวัสดี\n[2] ลาก่อน", provider="DeepInfra")
+    )
+    result, _ = run(batch_of([(1, "Hello."), (2, "Goodbye.")]), fake_client)
+    assert result.providers == {"DeepInfra": 1}
+
+
+def test_a_retry_on_another_provider_is_counted_too(fake_client):
+    fake_client.queue(llm.Completion("[2] ลาก่อน", provider="DeepInfra"))  # forgot [1]
+    fake_client.queue(llm.Completion("[1] สวัสดี", provider="DeepSeek"))
+    result, _ = run(batch_of([(1, "Hello."), (2, "Goodbye.")]), fake_client)
+    assert result.providers == {"DeepInfra": 1, "DeepSeek": 1}
+
+
 # --- retrying only what failed ----------------------------------------------
 
 

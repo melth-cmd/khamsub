@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Collection, Mapping, Sequence
@@ -70,6 +71,8 @@ class TranslatedFile:
     sources: dict[int, str] = field(default_factory=dict)
     dropped: list[int] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
+    # Who served each request, when the provider says. Reporting only.
+    providers: Counter[str] = field(default_factory=Counter)
     # Entries re-translated by the --fix pass, for the report.
     fixed: list[int] = field(default_factory=list)
     # Entries the --review pass looked at, and its proposed lines by index.
@@ -303,6 +306,7 @@ def translate_subtitles(
             **runner_kwargs,
         )
         result.usage = result.usage + batch_result.usage
+        result.providers.update(batch_result.providers)
 
         for entry_result in batch_result.entries:
             restored = tags.restore(
@@ -565,6 +569,7 @@ def retranslate_flagged(
 
     result.results = sorted(by_index.values(), key=lambda entry: entry.index)
     result.usage = result.usage + fixed.usage
+    result.providers.update(fixed.providers)
     result.fixed = list(indexes)
     result.sources.update(fixed.sources)
     result.subtitles = _rebuild(

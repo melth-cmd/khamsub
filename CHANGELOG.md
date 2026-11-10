@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- The run summary (per file, and the total) names the provider that served the
+  requests when the API reports it: `$0.0053 via DeepSeek`. A run split between
+  providers lists each with its request count. Reporting only; the cache keys and
+  the cost maths are untouched (#16).
 - `stray_punctuation` flag: a Thai line that ends with a full stop is reported
   and asked once more, then kept. Ellipses, `?`/`!`, a decimal (`88.5`) and a
   mid-line abbreviation (`ดร.`) are left alone. A repeated stop never turns the

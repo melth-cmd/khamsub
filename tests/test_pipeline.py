@@ -7,6 +7,7 @@ import pytest
 import srt
 
 import glossary
+import llm
 import pipeline
 import srtio
 from batcher import SourceEntry
@@ -980,3 +981,23 @@ def test_progress_counts_every_batch():
     )
     assert [event.batches_done for event in events] == [0, 1, 2, 3]
     assert events[0].batches_total == 3
+
+
+# --- who served the run (#16) -----------------------------------------------
+
+
+def test_pipeline_aggregates_who_served_the_run():
+    client = FakeClient([llm.Completion("[1] สวัสดี", provider="DeepSeek")])
+    result = run(client, [subtitle(1, "Hello.")])
+    assert result.providers == {"DeepSeek": 1}
+
+
+def test_pipeline_counts_each_provider_across_batches():
+    client = FakeClient(
+        [
+            llm.Completion("[1] หนึ่ง", provider="DeepInfra"),
+            llm.Completion("[2] สอง", provider="DeepSeek"),
+        ]
+    )
+    result = run(client, [subtitle(1, "One."), subtitle(2, "Two.")], size=1)
+    assert result.providers == {"DeepInfra": 1, "DeepSeek": 1}

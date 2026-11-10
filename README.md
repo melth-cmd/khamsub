@@ -45,6 +45,10 @@ While it runs, one line shows the batch, a bar, the time spent and a rough
 estimate of what is left. It updates in place on a terminal; when the output is
 redirected, one line is printed per batch.
 
+At the end, the summary gives the tokens, the exact cost and, when the API says,
+who served the requests (`$0.0053 via DeepSeek`), so two runs of the same file
+can be compared.
+
 ## Commands
 
     python translate.py "Movie.en.srt"

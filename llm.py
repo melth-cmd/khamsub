@@ -691,6 +691,7 @@ def usage_from_response(response: object) -> Usage:
 class Completion:
     text: str
     usage: Usage = field(default_factory=Usage)
+    provider: str = ""  # who served it, when the API says (OpenRouter)
 
 
 class ChatClient(Protocol):
@@ -848,4 +849,8 @@ class OpenRouterClient:
         if not choices:
             raise BadResponse("reply contained no choices")
         text = choices[0].message.content or ""
-        return Completion(text=text, usage=usage_from_response(response))
+        return Completion(
+            text=text,
+            usage=usage_from_response(response),
+            provider=str(_reported(response, "provider", "") or ""),
+        )

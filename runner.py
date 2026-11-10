@@ -17,6 +17,7 @@ import logging
 import math
 import random
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable, Mapping, Protocol, Sequence
 
@@ -47,6 +48,7 @@ class BatchResult:
 
     entries: list[EntryResult] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
+    providers: Counter[str] = field(default_factory=Counter)
     calls: int = 0
 
     @property
@@ -184,6 +186,8 @@ def translate_batch(
             continue
 
         result.usage = _add_usage(result.usage, completion.usage)
+        if completion.provider:
+            result.providers[completion.provider] += 1
         for index in pending:
             attempts[index] += 1
 
