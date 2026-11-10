@@ -15,7 +15,8 @@ do well unaided; the bible is a later upgrade, not a requirement.
 ```
 
 - 60 cues, 59 sent (cue 48 is dropped: nothing to translate), 1 batch.
-- ~1,400 prompt tokens, about $0.0014 on the current model.
+- About 1,400 prompt tokens. The last full run (2026-11-10) used 12,639 tokens in
+  total and cost $0.0034, mostly reasoning; treat any estimate as a floor.
 - Outputs land next to the input and are gitignored: `coverage.th.srt`,
   `coverage.cache.json`, `coverage.report.txt`.
 - Do not pass `--bible` or a glossary when scoring models. Same prompt version,

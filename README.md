@@ -41,11 +41,9 @@ This reads the English file and writes `Movie (2026).th.srt` next to it. It also
 writes a cache and a report (see "Files it makes"). A typical episode may take a
 few minutes.
 
-While it runs, one line shows the progress: the batch, a bar, the time spent and
-an estimate of what is left. On a terminal it updates in place, so a slow model
-is visibly slow rather than looking hung. The estimate assumes the remaining
-batches cost the same as the ones already done, so treat it as a rough guide. If
-the output is redirected to a file, one line is printed per batch instead.
+While it runs, one line shows the batch, a bar, the time spent and a rough
+estimate of what is left. It updates in place on a terminal; when the output is
+redirected, one line is printed per batch.
 
 ## Commands
 
@@ -57,15 +55,12 @@ the output is redirected to a file, one line is printed per batch instead.
       other files still run.
 
     python translate.py "Show.en.srt" --dry-run
-      Show the batches, the input and output cost, and an estimate of the
-      reasoning. No API call, no key needed.
+      Show the batches and the input/output cost, with reasoning tokens shown
+      as not estimated. No API call, no key needed.
 
     python translate.py "Show.en.srt" --bible-only
       Read the whole script once and write the story bible and glossary, then
       stop. Useful before translating a long series.
-
-    python translate.py "Show.en.srt" --bible-only --force
-      Rebuild those two files. Hand edits are lost, so use it only when you mean to.
 
     python translate.py "Show.en.srt" --fix
       After translating, translate only the lines the checks flagged, with a
@@ -91,7 +86,8 @@ the output is redirected to a file, one line is printed per batch instead.
       Add per-batch log detail. The progress line is shown either way.
 
     python translate.py "Show.en.srt" --force
-      Also accept inputs that look translated (`*.th.srt`).
+      Also accept inputs that look translated (`*.th.srt`). With `--bible-only`
+      it rebuilds existing bible/glossary files, losing hand edits.
 
 To drop sound descriptions like `[door slams]` and `(laughs)` before
 translating, set `strip_hi = true` in `[cleanup]` of `config.toml`. That is a
@@ -99,15 +95,16 @@ config setting, not a command.
 
 ## Files it makes
 
-For `Movie.en.srt` you get these next to it:
+For `Movie.en.srt` you get these next to it (the last two only with `--bible-only`):
 
     Movie.th.srt          the Thai subtitles (the file you watch)
     Movie.report.txt      what the checks found, and review suggestions
     Movie.cache.json      finished lines, so a rerun is free
-    Movie.bible.md        characters, relationships and how they speak
-    Movie.glossary.toml   names and terms with their Thai spelling
+    Movie.bible.md        characters and how they speak
+    Movie.glossary.toml   names and their Thai spelling
 
 The sidecar files drop the `.en.` part, so `Show.en.srt` gives `Show.report.txt`.
+A normal run reads the bible and glossary if they exist; it never creates them.
 
 ## Read the report
 
@@ -184,11 +181,10 @@ key here:
 - The run stops and names a glossary term — fix that term, or rebuild the file
   with `--bible-only --force`. No API call was made.
 - Some lines are still English — open the report, or run again with `--fix`.
-- `rate_limited` — the tool waits and retries. Lower `[batch] size` if it
-  happens often.
-- The cost estimate looks low — it leaves out reasoning tokens, which a
-  reasoning model spends freely. A finished run prints the exact cost it was
-  charged, so compare against that.
+- `rate_limited` — the tool waits and retries. If it keeps happening, try a
+  smaller `[batch] size` (fewer tokens per request) or another model/provider.
+- The headline cost leaves out reasoning tokens, which a reasoning model spends
+  freely. A finished run prints the exact cost it was charged.
 - "no story bible for ..." — that is only a hint. The tool works without one;
   `--bible-only` makes one.
 
@@ -200,36 +196,8 @@ key here:
 
 ## What is where
 
-```
-khamsub/
-├── translate.py       # CLI: flags, pre-flight, run summary, --dry-run
-├── config.py          # loads and validates config.toml; builds the model client
-├── config.toml        # user settings (model, batch, prices fallback)
-├── srtio.py           # read/write .srt, encoding fallback, output + sidecar naming
-├── tags.py            # {0} placeholders: protect / check / restore formatting tags
-├── hi.py              # strip SDH descriptions ("[door slams]"), keep "[Maya]"
-├── batcher.py         # batching, context lines, --limit/--range selection
-├── llm.py             # OpenRouter client, the prompt, reply validation, usage
-├── runner.py          # one batch: retry only failures, backoff, English fallback
-├── cache.py           # per-entry JSON cache, atomic saves, cache keys
-├── bible.py           # story bible pre-pass: chunk, prompt, merge, write both files
-├── glossary.py        # terms: validate, render, parse, load; per-batch selection
-├── layout.py          # normalise wrapped source lines; rewrap/merge the translation
-├── verify.py          # checks a finished file, returns flags, writes report.txt
-├── pipeline.py        # orchestrates one file: prepare -> batch -> translate -> write
-├── progress.py        # live progress line: bar, elapsed time, ETA
-├── pricing.py         # asks the provider for the model's current price
-├── samples/
-│   ├── coverage.srt   # 60-cue sample: every behaviour fixed or argued about
-│   └── coverage.md    # the rubric for that sample, with cue numbers
-├── tests/             # one test file per module, plus conftest/helpers
-├── README.md          # this file
-├── STRUCTURE.md       # where to look for a given bug or feature
-└── CHANGELOG.md       # history
-```
-
-`STRUCTURE.md` turns that map into a lookup table: "I want to change X, open Y",
-plus the symptoms of past bugs and where each one lived.
+`STRUCTURE.md` lists every file, what it controls, the order of one run, and where
+each past bug lived. Read it before your first change.
 
 ## Development
 
@@ -237,6 +205,3 @@ The tests need `pytest`, which is not needed to run the tool:
 
     uv pip install -r requirements-dev.txt
     pytest -q
-
-`STRUCTURE.md` maps every file to what it controls, and lists where to look for
-a given kind of bug or feature. Read it before your first change.

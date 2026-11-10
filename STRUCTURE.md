@@ -5,7 +5,8 @@ your first change; it is meant to answer "which file do I open?" in a few
 seconds, for a human or an agent.
 
 This file describes **where**. The **why** behind a decision lives in
-`CHANGELOG.md` and in the local `PROGRESS.md`.
+`CHANGELOG.md`, in the local `PROGRESS.md`, and in `PROGRESS-archive.md` for the
+historical build log.
 
 ## What the tool does
 
@@ -42,7 +43,7 @@ khamsub/
 ├── STRUCTURE.md       # this file
 └── CHANGELOG.md       # user-facing history
 
-# Local only, gitignored: AGENTS.md, SPEC.md, PROGRESS.md, subs/
+# Local only, gitignored: AGENTS.md, SPEC.md, PROGRESS.md, PROGRESS-archive.md, subs/
 ```
 
 `subs/` holds real subtitle files to try things on and everything the tool writes
@@ -139,8 +140,10 @@ A new *check* touches four places, and forgetting one is the usual bug:
    string where there is one.
 4. `CHANGELOG.md` under `[Unreleased]`.
 
-Then add a cue to `samples/coverage.srt` and a row to `samples/coverage.md` so a
-live run exercises it.
+Then add a cue to `samples/coverage.srt` and a row to `samples/coverage.md` when
+the content can provoke the check (a token, a shape). When the failure is model
+behaviour that no cue can force (a truncated reply, a stray full stop), keep the
+real string in a test and leave the sample at 60.
 
 ## Tests
 

@@ -8,7 +8,7 @@ model = "deepseek/deepseek-v4.1-flash-1017"
 temperature = 0.25
 timeout_s = 120
 max_retries = 3
-wire_format = "tagged"           # or "json"
+wire_format = "tagged"           # only "tagged" is implemented
 
 # USD per million tokens, used only for --dry-run cost estimates when the
 # provider's published price cannot be fetched. OpenRouter is asked for the live

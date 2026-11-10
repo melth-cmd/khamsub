@@ -15,8 +15,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   line back into English (#17).
 - `truncation` flag: an entry that comes back with fewer lines than its source
   and far shorter than it (below 45% of the source length) is reported as a
-  possible truncation instead of as an ordinary line-count change. On the 10,083
-  cached pairs in `subs/` this fires 8 times, where the previous `short` floor
+  possible truncation instead of as an ordinary line-count change. On a corpus
+  of 10,083 cached pairs this fires 8 times, where the previous `short` floor
   (15%) never fired at all.
 
 ### Changed
@@ -81,7 +81,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   reproduce a stub line like `in school.`. Only cues that use a speaker dash are
   touched, and a group is joined only when it fits on one line, so no break point
   is invented. The source text is part of the cache key, so affected entries are
-  retranslated once (18.9% of the multi-line cues measured on subs/).
+  retranslated once (18.9% of the multi-line cues measured).
 - `english_left` no longer reports a run glued to Thai; that fragment is
   `mixed_script`, so the two flags never describe the same text.
 - `english_left` is strict: only links, handles and short codes may stay Latin,
@@ -92,17 +92,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
-- A speaker dash written as U+2010 HYPHEN (`‐`) is now recognised. 1600 two-line
-  cues in the PEN15 sources start with it, and every dash rule missed them: the
+- A speaker dash written as U+2010 HYPHEN (`‐`) is now recognised. 1,600 two-line
+  cues in the test episodes start with it, and every dash rule missed them: the
   dash count was zero, the dash repair never fired, `dashes_lost` could never
   report, and a wrapped continuation was never joined.
 - Layout repair no longer splits Thai mid-word. When the model merges a
   multi-line entry, the re-wrap may only break at a space, and no piece may fall
   below 35% of its expected length; an entry with no safe break point is left on
   one line and reported as "left merged" instead of being cut at an arbitrary
-  character. On 16 cached runs this removed every mid-word cut (362 entries per
-  6402 multi-line entries are now left merged, 90% of them short enough to fit a
-  single line).
+  character. On the cached test runs this removed every mid-word cut (362 of
+  6,402 multi-line entries are now left merged, 90% of them short enough to fit
+  a single line).
 - A URL or e-mail followed by sentence punctuation no longer takes that
   punctuation into the token it must keep. A correct translation that writes Thai
   punctuation after a link was reported as `lost_token`, retried, and could fall
@@ -112,39 +112,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 First public release.
 
-### Added
-
-- Command-line tool that translates English `.srt` subtitles into Thai using an
-  LLM (OpenRouter by default).
-- Only subtitle text is sent to the model; subtitle numbers and timestamps are
-  never changed.
-- Translation cache (`.cache.json`) so reruns do not pay for finished lines again.
-- Story bible (`.bible.md`) and glossary (`.glossary.toml`) to keep names,
-  pronouns and politeness consistent. Both are plain text and meant to be
-  edited by hand.
-  - Editing a glossary term re-translates only the lines that use it.
-  - Editing the bible re-translates the whole file.
-- Quality-check report (`.report.txt`) listing flagged lines, with checks for
-  `english_left`, `glossary_missing`, `line_count`, `dashes_lost` and `failed`.
-  Nothing is changed automatically.
-- Command options:
-  - Multiple input files in one run; a failing file does not stop the others.
-  - `--dry-run` to show the batch count and a rough cost with no API call.
-  - `--bible-only` (with `--force` to rebuild) to generate the bible and
-    glossary before translating a long series.
-  - `--fix` to re-translate only flagged lines with a stricter prompt.
-  - `--review` to have the model suggest improvements for flagged lines
-    without changing the subtitles.
-  - `--limit` and `--range` to translate part of a file.
-  - `--output`, `--config`, `-v` and `--force`.
-- Optional `strip_hi` setting to remove sound descriptions such as `[door slams]`
-  and `(laughs)` before translating.
-- Support for any OpenAI-compatible provider through `[llm]` settings in
-  `config.toml`, including custom request headers.
-- API key is read from the environment only and is never written to config
-  or cache files.
-- Exit codes: `0` finished, `1` a file failed, `2` problem before any work.
-- Test suite (`pytest`) and development requirements file.
+- English `.srt` subtitles translated into Thai with an LLM (OpenRouter by
+  default); only the subtitle text is sent, indexes and timestamps are copied.
+- Per-entry cache, so a rerun pays only for lines that are new.
+- Hand-editable story bible and glossary to keep names, pronouns and politeness
+  consistent.
+- Report of flagged lines; nothing is changed automatically.
+- Several files per run, `--dry-run`, `--bible-only`, `--fix`, `--review`,
+  `--limit`, `--range`, `--output`, `--config`, `-v` and `--force`.
+- Any OpenAI-compatible provider through `[llm]`.
+- API key from the environment only; exit codes 0, 1 and 2.
 
 [Unreleased]: https://github.com/melth-cmd/khamsub/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/melth-cmd/khamsub/compare/v0.1.0...v0.2.0
