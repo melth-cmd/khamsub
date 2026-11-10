@@ -165,6 +165,24 @@ def test_a_short_reply_with_no_retries_left_is_kept(fake_client):
     assert result.as_dict() == {1: "ถ้ายิงเพื่อช่วยคน"}
 
 
+def test_a_line_final_full_stop_is_retried_then_kept(fake_client):
+    # Issue #17: the stop is cosmetic, so a repeat is kept, never English.
+    fake_client.queue("[1] ฉันไง.")
+    fake_client.queue("[1] ฉันไง.")
+    result, _ = run(batch_of([(1, "I am.")]), fake_client)
+    assert fake_client.call_count == 2
+    assert result.failures == []
+    assert result.as_dict() == {1: "ฉันไง."}
+
+
+def test_a_fixed_full_stop_is_accepted(fake_client):
+    fake_client.queue("[1] ฉันไง.")
+    fake_client.queue("[1] ฉันไง")
+    result, _ = run(batch_of([(1, "I am.")]), fake_client)
+    assert fake_client.call_count == 2
+    assert result.as_dict() == {1: "ฉันไง"}
+
+
 # --- giving up --------------------------------------------------------------
 
 

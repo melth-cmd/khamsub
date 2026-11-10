@@ -298,6 +298,35 @@ def test_truncation_is_ordered_after_line_count():
     assert verify.KINDS.index("truncation") == verify.KINDS.index("line_count") + 1
 
 
+# --- a line ending with a full stop (issue #17) -----------------------------
+
+
+def test_a_line_final_full_stop_is_flagged():
+    source = "<i>- Nobody is listening.\n- I am.</i>"
+    flags = verify.check_entry(6, source, "<i>- ไม่มีใครฟังอยู่\n- ฉันไง.</i>")
+    assert [flag.kind for flag in flags] == ["stray_punctuation"]
+    assert "ฉันไง." in flags[0].message
+
+
+def test_stray_punctuation_is_ordered_after_dashes_lost():
+    assert (
+        verify.KINDS.index("stray_punctuation")
+        == verify.KINDS.index("dashes_lost") + 1
+    )
+
+
+def test_an_ellipsis_is_not_stray_punctuation():
+    assert verify.check_entry(1, "Wait...", "รอ...") == []
+
+
+def test_a_decimal_is_not_stray_punctuation():
+    assert verify.check_entry(1, "It costs 88.5.", "ราคา 88.5.") == []
+
+
+def test_a_non_verbal_source_keeps_its_stop():
+    assert verify.check_entry(1, "Mm-hmm.", "Mm-hmm.") == []
+
+
 # --- check_entry ------------------------------------------------------------
 
 

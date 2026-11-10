@@ -204,9 +204,9 @@ def translate_batch(
             for issue in issues
             if issue.index is not None and issue.soft and issue.index in pending
         }
-        # A soft issue (a merge that came back short) is asked once more, then
-        # kept: compact Thai and a truncated cue look alike, and English is the
-        # worse guess. It shares the retry budget with everything else.
+        # A soft issue (a short merge, or a line-final full stop) is asked once
+        # more, then kept: compact Thai and a truncated cue look alike, and
+        # English is the worse guess. It shares the retry budget.
         again = {
             index
             for index in soft
@@ -215,9 +215,11 @@ def translate_batch(
         broken = hard | again
         soft_retried |= again
         if again:
+            kinds = sorted({issue.kind for issue in issues if issue.index in again})
             log.warning(
-                "entry [%s] came back short, asking once more",
+                "entry [%s] flagged %s, asking once more",
                 ", ".join(str(index) for index in sorted(again)),
+                "/".join(kinds) or "again",
             )
 
         for index in list(pending):

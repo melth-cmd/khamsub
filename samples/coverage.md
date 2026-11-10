@@ -43,7 +43,7 @@ reader or a careful eye.
 | 3 | two long lines, Thai will have no spaces | exactly 2 lines; **auto**: no line starts with a combining mark (ั ิ ี ึ ื ุ ู ็ ์ ่ ้ ๊ ๋) and none ends with เ แ โ ใ ไ or ็ |
 | 4 | dash, dash, then a continuation stub (#11) | **2 lines**: the stub is joined to its speaker before translation |
 | 5 | dash, dash, bare continuation | **2 lines**, same normalisation as cue 4 |
-| 6 | `<i>` spanning two dash lines | **auto**: `<i>` preserved once, 2 lines |
+| 6 | `<i>` spanning two dash lines | **auto**: `<i>` preserved once, 2 lines; **no line ends with a full stop** (the #17 reproduction) |
 | 7 | one long line | exactly **1** line; it must not be split to match anything |
 
 ### Speaker labels (#7, #12)

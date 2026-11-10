@@ -347,6 +347,28 @@ def _content_length(text: str) -> int:
     return len(re.sub(r"\s+", "", tags.strip_markup(text)))
 
 
+# Thai subtitles do not end a line with a full stop (issue #17). Ellipses,
+# question and exclamation marks are normal, and a dot after a digit is a
+# decimal (88.5), so those are left alone. The check is line-final only,
+# because a Thai abbreviation such as ดร. belongs mid-line; a line that really
+# ends with an abbreviation is the accepted false positive.
+_TRAILING_CLOSERS = "\"'”’»"
+
+
+def stray_punctuation(text: str) -> list[str]:
+    """Lines that end with a full stop, in order, without duplicates."""
+    found: list[str] = []
+    for line in text.split("\n"):
+        visible = tags.strip_markup(line).rstrip().rstrip(_TRAILING_CLOSERS)
+        if not visible.endswith(".") or visible.endswith("..."):
+            continue
+        if visible[-2:-1].isdigit():
+            continue
+        if visible not in found:
+            found.append(visible)
+    return found
+
+
 def validate(batch: Batch, decoded: Decoded) -> list[Issue]:
     """Check a parsed reply against the batch that asked for it.
 
@@ -437,6 +459,18 @@ def validate(batch: Batch, decoded: Decoded) -> list[Issue]:
             issues.append(
                 Issue("tag_mismatch", index, f"entry [{index}]: {tag_issue.message}")
             )
+
+        if not is_non_verbal(source):
+            stops = stray_punctuation(text)
+            if stops:
+                issues.append(
+                    Issue(
+                        "stray_punctuation",
+                        index,
+                        f"entry [{index}] ends a line with a full stop: {stops[0]}",
+                        soft=True,
+                    )
+                )
 
     for index in decoded.entries:
         if index not in expected:

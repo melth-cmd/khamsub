@@ -122,6 +122,7 @@ lists any problems with the line number, the English and the Thai. Common flags:
                            may be missing
     bleed                  the first line repeats a line from the cue above
     dashes_lost            a speaker dash such as "- " disappeared
+    stray_punctuation      a line ends with a full stop, which Thai does not use
     tag_mismatch           formatting tags are missing or invented
     lost_token             a number, URL or code from the source is missing
     glossary_missing       a term is not written the way the glossary says

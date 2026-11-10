@@ -15,6 +15,7 @@ Flag kinds:
   truncation           fewer lines than the source and far shorter: text is lost
   bleed                the first line repeats a line from the cue above
   dashes_lost          a speaker dash the source had is gone
+  stray_punctuation    a line ends with a full stop, which Thai does not use
   tag_mismatch         formatting tags are missing or invented
   lost_token           a number, link or short code from the source is missing
   glossary_missing     a glossary term is not rendered as the glossary says
@@ -55,6 +56,7 @@ KINDS: tuple[str, ...] = (
     "truncation",
     "bleed",
     "dashes_lost",
+    "stray_punctuation",
     "tag_mismatch",
     "lost_token",
     "glossary_missing",
@@ -315,6 +317,27 @@ def leftover_english(
     ]
 
 
+def stray_punctuation(index: int, source: str, translated: str) -> list[Flag]:
+    """A Thai line that ends with a full stop, which the convention forbids.
+
+    The prompt already says so; the check is here because a bare "." is
+    invisible to every other one. It is advisory in the report and a soft
+    retry during translation, so a stubborn stop never turns Thai into English.
+    """
+    lines = llm.stray_punctuation(translated)
+    if not lines:
+        return []
+    return [
+        Flag(
+            index,
+            "stray_punctuation",
+            "line ends with a full stop: " + " / ".join(lines),
+            source,
+            translated,
+        )
+    ]
+
+
 def length_flags(index: int, source: str, translated: str) -> list[Flag]:
     """Flag a translation that is implausibly short or long for its source."""
     source_length = content_length(source)
@@ -413,6 +436,8 @@ def check_entry(
                 translated,
             )
         )
+
+    flags.extend(stray_punctuation(index, source, translated))
 
     tag_problem = tag_mismatch(source, translated)
     if tag_problem:

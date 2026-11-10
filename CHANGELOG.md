@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- `stray_punctuation` flag: a Thai line that ends with a full stop is reported
+  and asked once more, then kept. Ellipses, `?`/`!`, a decimal (`88.5`) and a
+  mid-line abbreviation (`ดร.`) are left alone. A repeated stop never turns the
+  line back into English (#17).
 - `truncation` flag: an entry that comes back with fewer lines than its source
   and far shorter than it (below 45% of the source length) is reported as a
   possible truncation instead of as an ordinary line-count change. On the 10,083

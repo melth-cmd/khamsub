@@ -754,3 +754,57 @@ def test_validate_does_not_retry_a_non_verbal_merge():
     batch = make_batches([SourceEntry(1, "Mm-hmm.\nMm-hmm.")], size=1)[0]
     decoded = llm.decode_entries("[1] อืม")
     assert llm.validate(batch, decoded) == []
+
+
+# --- a line ending with a full stop (issue #17) -----------------------------
+
+
+def test_stray_punctuation_finds_a_line_final_full_stop():
+    # The real cue 6 that shipped with the stop, behind <i>.
+    text = "<i>- ไม่มีใครฟังอยู่\n- ฉันไง.</i>"
+    assert llm.stray_punctuation(text) == ["- ฉันไง."]
+
+
+def test_stray_punctuation_accepts_question_and_exclamation_marks():
+    assert llm.stray_punctuation("อะไรนะ?\nจริงเหรอ!\nไปกันเถอะ") == []
+
+
+def test_stray_punctuation_accepts_an_ellipsis():
+    assert llm.stray_punctuation("คือ...\nฉันไม่รู้...") == []
+
+
+def test_stray_punctuation_accepts_a_dot_after_a_digit():
+    assert llm.stray_punctuation("ราคา 88.5\nมี 5.") == []
+
+
+def test_stray_punctuation_ignores_a_mid_line_abbreviation():
+    assert llm.stray_punctuation("ดร.เรเยส มาแล้ว") == []
+
+
+def test_stray_punctuation_sees_through_tags_and_placeholders():
+    assert llm.stray_punctuation("<i>ฉันไง.</i>") == ["ฉันไง."]
+    assert llm.stray_punctuation("ฉันไง.{0}") == ["ฉันไง."]
+
+
+def test_stray_punctuation_sees_through_a_closing_quote():
+    assert llm.stray_punctuation("ฉันไง.”") == ["ฉันไง."]
+
+
+def test_stray_punctuation_lists_each_line_once():
+    assert llm.stray_punctuation("หนึ่ง.\nหนึ่ง.") == ["หนึ่ง."]
+
+
+def test_validate_reports_a_line_final_full_stop():
+    # Batch items carry the protected placeholders, not the raw tags.
+    source = "{0}- Nobody is listening.\n- I am.{1}"
+    batch = make_batches([SourceEntry(6, source)], size=1)[0]
+    decoded = llm.decode_entries("[6] {0}- ไม่มีใครฟังอยู่\n- ฉันไง.{1}")
+    issues = llm.validate(batch, decoded)
+    assert [issue.kind for issue in issues] == ["stray_punctuation"]
+    assert issues[0].soft is True
+
+
+def test_validate_does_not_nag_a_non_verbal_source_for_a_stop():
+    batch = make_batches([SourceEntry(1, "Mm-hmm.")], size=1)[0]
+    decoded = llm.decode_entries("[1] Mm-hmm.")
+    assert llm.validate(batch, decoded) == []
