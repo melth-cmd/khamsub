@@ -238,6 +238,13 @@ _MIXED_RE = re.compile(
 # transliterated and only their digits have to survive (Flymiamibro22).
 KEPT_CODE_MIN_LENGTH = 5
 
+# English inflections of a number: ordinals (1st, 25th) and decade plurals
+# (20s, 1990s). The suffix is English, so only the digits have to survive
+# (must_keep_digits); demanding "1st" verbatim made every such cue fail and
+# fall back to English (issue #18). Real short codes (K9, 21L4, A1) are not
+# affected: they are not a digit run plus an English suffix.
+_INFLECTED_NUMBER_RE = re.compile(r"\d+(?:st|nd|rd|th|s)", re.IGNORECASE)
+
 
 def _token_text(text: str) -> str:
     """Text with tags and placeholders removed, brackets and words kept."""
@@ -260,7 +267,9 @@ def kept_verbatim(text: str) -> list[str]:
                 found.append(token)
     for match in _MIXED_RE.finditer(cleaned):
         token = match.group(0)
-        if len(token) < KEPT_CODE_MIN_LENGTH:
+        if len(token) < KEPT_CODE_MIN_LENGTH and not _INFLECTED_NUMBER_RE.fullmatch(
+            token
+        ):
             found.append(token)
     return found
 

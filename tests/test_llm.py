@@ -499,6 +499,46 @@ def test_a_long_letter_digit_code_is_not_kept_verbatim():
     assert llm.kept_verbatim("21L4") == ["21L4"]  # 4 characters stays Latin
 
 
+# --- inflected numbers (issue #18) ------------------------------------------
+
+
+def test_ordinals_are_not_kept_verbatim():
+    for source in ("1st", "2nd", "3rd", "4th", "10th", "25th", "1ST", "25Th"):
+        assert llm.kept_verbatim(source) == [], source
+
+
+def test_ordinals_inside_a_sentence_are_not_kept_verbatim():
+    assert llm.kept_verbatim("We're on the 10th floor.") == []
+    assert llm.kept_verbatim("Here is the news for July 25th.") == []
+
+
+def test_decade_plurals_are_not_kept_verbatim():
+    for source in ("20s", "30s", "1990s", "60S"):
+        assert llm.kept_verbatim(source) == [], source
+
+
+def test_real_short_codes_are_still_kept_verbatim():
+    for code in ("K9", "21L4", "A1", "3B", "V2"):
+        assert llm.kept_verbatim(code) == [code], code
+
+
+def test_an_ordinal_needs_only_its_digits_to_survive():
+    assert llm.missing_kept("November 1st.", "1 พฤศจิกายน") == []
+    assert llm.missing_kept("We're on the 10th floor.", "เราอยู่ชั้น 10") == []
+    assert llm.missing_kept("A woman in her 20s.", "ผู้หญิงวัย 20 กว่า") == []
+
+
+def test_a_lost_ordinal_digit_is_still_reported():
+    assert llm.missing_kept("November 1st.", "วันที่หนึ่ง พฤศจิกายน") == ["1"]
+
+
+def test_validate_accepts_a_translated_ordinal():
+    source = "Here is the news for Tuesday, July 25th."
+    batch = make_batches([SourceEntry(1, source)], size=1)[0]
+    decoded = llm.decode_entries("[1] นี่คือข่าววันอังคารที่ 25 กรกฎาคม")
+    assert llm.validate(batch, decoded) == []
+
+
 def test_must_keep_digits_lists_every_number_and_the_digits_of_a_long_code():
     assert llm.must_keep_digits("06:00") == ["06", "00"]
     assert llm.must_keep_digits("Flymiamibro22") == ["22"]

@@ -24,6 +24,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   line because no safe break point existed now reads "left merged by layout
   repair (no safe break point)" instead of looking like a changed line count.
 
+### Fixed
+
+- English ordinals and decade plurals (`1st`, `25th`, `20s`, `1990s`) no longer
+  have to survive verbatim. They were treated as short letter-digit codes, so no
+  natural Thai translation could pass and every such cue fell back to English
+  (#18). Only the digit run is required now; a suffix left in the Thai is
+  reported as leftover English, and real short codes (`K9`, `21L4`, `A1`) are
+  unchanged.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added

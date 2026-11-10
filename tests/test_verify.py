@@ -153,6 +153,21 @@ def test_leftover_english_still_flags_a_name_left_in_english():
     assert "MAYA" in flags[0].message
 
 
+def test_a_translated_ordinal_is_clean():
+    # The digit survives and nothing Latin is left (issue #18).
+    assert verify.check_entry(1, "November 1st.", "1 พฤศจิกายน") == []
+
+
+def test_an_english_ordinal_suffix_in_the_thai_is_flagged():
+    flags = verify.check_entry(1, "November 1st.", "1st พฤศจิกายน")
+    assert [flag.kind for flag in flags] == ["english_left"]
+    assert "st" in flags[0].message
+
+
+def test_a_decade_plural_in_thai_is_clean():
+    assert verify.check_entry(1, "A woman in her 20s.", "ผู้หญิงวัย 20 กว่า") == []
+
+
 def test_a_lost_number_is_flagged():
     flags = verify.check_entry(1, '"Pen15"', '"เพนฟิฟทีน"')
     kinds = [flag.kind for flag in flags]
