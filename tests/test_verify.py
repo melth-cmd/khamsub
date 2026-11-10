@@ -223,6 +223,66 @@ def test_an_empty_translation_is_not_measured():
     assert verify.length_flags(1, "Hello there.", "") == []
 
 
+# --- truncation -------------------------------------------------------------
+
+# The two real cases from issue #19: a two-line cue came back as one line
+# holding only its first half.
+E02_87 = (
+    "If you shoot to save someone,\nyou have to write an apology.",
+    "ถ้ายิงเพื่อช่วยคน",
+)
+E05_272 = ("but I'm positive\nthey can help someone out.", "แต่ฉันมั่นใจ")
+SAFE_MERGE = ("You were just really good\nin the play.", "เธอเก่งมากในละคร")
+
+
+def test_a_merged_entry_far_shorter_than_the_source_is_a_truncation():
+    flag = verify.truncation_flag(87, *E02_87)
+    assert flag is not None
+    assert flag.kind == "truncation"
+    assert "2 line(s) in, 1 out" in flag.message
+
+
+def test_the_second_reported_truncation_is_caught_too():
+    assert verify.truncation_flag(272, *E05_272) is not None
+
+
+def test_a_safe_merge_is_not_a_truncation():
+    assert verify.truncation_flag(1, *SAFE_MERGE) is None
+
+
+def test_a_terse_one_line_cue_is_never_called_truncated():
+    # 0.43 of the source length, but the source had one line: legitimate.
+    assert verify.truncation_flag(1, "Bend your knees.", "งอเข่า") is None
+
+
+def test_a_source_too_short_to_measure_is_not_a_truncation():
+    assert verify.truncation_flag(1, "A\nB", "ก") is None
+
+
+def test_an_empty_translation_is_not_a_truncation():
+    assert verify.truncation_flag(1, "One.\nTwo.", "") is None
+
+
+def test_a_truncation_replaces_the_line_count_flag():
+    kinds = [flag.kind for flag in verify.check_entry(87, *E02_87)]
+    assert kinds == ["truncation"]
+
+
+def test_a_merge_layout_made_is_labelled_as_such():
+    flags = verify.check_entry(1, *SAFE_MERGE, rewrapped="unrepaired")
+    assert [flag.kind for flag in flags] == ["line_count"]
+    assert "left merged by layout repair" in flags[0].message
+
+
+def test_a_merge_without_a_layout_result_keeps_the_plain_message():
+    flags = verify.check_entry(1, *SAFE_MERGE)
+    assert flags[0].message == "2 line(s) in the source, 1 in the translation"
+
+
+def test_truncation_is_ordered_after_line_count():
+    assert verify.KINDS.index("truncation") == verify.KINDS.index("line_count") + 1
+
+
 # --- check_entry ------------------------------------------------------------
 
 
@@ -368,6 +428,24 @@ def test_verify_file_only_uses_the_terms_it_is_given():
     assert [flag.kind for flag in flagged.flags] == ["glossary_inconsistent"]
 
 
+def test_verify_file_uses_the_layout_result_for_a_merge():
+    translated = FakeFile(
+        results=[FakeResult(1, SAFE_MERGE[1], rewrapped="unrepaired")],
+        sources={1: SAFE_MERGE[0]},
+    )
+    flags = verify.verify_file(translated).flags
+    assert [flag.kind for flag in flags] == ["line_count"]
+    assert "layout repair" in flags[0].message
+
+
+def test_verify_file_reports_a_truncated_entry():
+    translated = FakeFile(
+        results=[FakeResult(87, E02_87[1], rewrapped="unrepaired")],
+        sources={87: E02_87[0]},
+    )
+    assert [flag.kind for flag in verify.verify_file(translated).flags] == ["truncation"]
+
+
 # --- end to end through the pipeline ---------------------------------------
 
 
@@ -412,6 +490,31 @@ def test_pipeline_failure_is_verified_as_failed():
     verification = verify.verify_file(result)
     assert verification.by_kind == {"failed": 1}
     assert "missing_thai" in verification.flags[0].message
+
+
+def test_pipeline_retries_a_truncated_reply():
+    subtitles, _ = srtio.parse_subtitles(
+        "1\n00:00:01,000 --> 00:00:02,000\n"
+        "If you shoot to save someone,\nyou have to write an apology.\n"
+    )
+    client = FakeClient(
+        ["[1] ถ้ายิงเพื่อช่วยคน", "[1] ถ้ายิงเพื่อช่วยคน\nคุณต้องเขียนคำขอโทษ"]
+    )
+    result = pipeline.translate_subtitles(client, subtitles, sleep=lambda seconds: None)
+    assert client.call_count == 2
+    assert result.results[0].text.count("\n") == 1
+    assert verify.verify_file(result).flags == []
+
+
+def test_pipeline_flags_a_truncation_that_survived_the_retry():
+    subtitles, _ = srtio.parse_subtitles(
+        "1\n00:00:01,000 --> 00:00:02,000\n"
+        "If you shoot to save someone,\nyou have to write an apology.\n"
+    )
+    client = FakeClient(["[1] ถ้ายิงเพื่อช่วยคน"] * 2)
+    result = pipeline.translate_subtitles(client, subtitles, sleep=lambda seconds: None)
+    flags = verify.verify_file(result).flags
+    assert [flag.kind for flag in flags] == ["truncation"]
 
 
 def test_pipeline_strip_hi_source_is_the_cleaned_text():

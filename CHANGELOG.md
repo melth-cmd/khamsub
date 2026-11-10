@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- `truncation` flag: an entry that comes back with fewer lines than its source
+  and far shorter than it (below 45% of the source length) is reported as a
+  possible truncation instead of as an ordinary line-count change. On the 10,083
+  cached pairs in `subs/` this fires 8 times, where the previous `short` floor
+  (15%) never fired at all.
+
+### Changed
+
+- A reply that merges a multi-line cue and comes back far shorter is asked once
+  more, then kept and flagged. A merge that is merely compact is common, and
+  leaving it in English would be the worse guess.
+- The report tells the two kinds of merge apart: a merge `layout.py` left on one
+  line because no safe break point existed now reads "left merged by layout
+  repair (no safe break point)" instead of looking like a changed line count.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added

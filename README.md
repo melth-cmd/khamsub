@@ -118,6 +118,8 @@ lists any problems with the line number, the English and the Thai. Common flags:
     empty                  nothing came back
     short / long           the length is far from the source's
     line_count             the translation has a different number of lines
+    truncation             fewer lines than the source and far shorter: text
+                           may be missing
     bleed                  the first line repeats a line from the cue above
     dashes_lost            a speaker dash such as "- " disappeared
     tag_mismatch           formatting tags are missing or invented
@@ -129,9 +131,12 @@ lists any problems with the line number, the English and the Thai. Common flags:
 
 Line layout is repaired automatically: breaks are re-split, speaker dashes are
 put back, and a translation with more lines than its source is retried once and
-then merged down. Everything else is reported. To let the model try the flagged
-lines again, run with `--fix`. For advice without any change, run with
-`--review`; its suggestions appear at the top of the report.
+then merged down. A line that comes back merged and far shorter is asked again
+once, then kept and flagged as `truncation`. When the only difference is a merge
+that layout allowed, `line_count` says so ("left merged by layout repair").
+Everything else is reported. To let the model try the flagged lines again, run
+with `--fix`. For advice without any change, run with `--review`; its
+suggestions appear at the top of the report.
 
 ## The bible and glossary
 

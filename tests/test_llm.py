@@ -679,3 +679,38 @@ def test_validate_accepts_the_source_line_count():
     batch = make_batches([SourceEntry(1, "One.\nTwo.")], size=1)[0]
     decoded = llm.decode_entries("[1] หนึ่ง\nสอง")
     assert llm.validate(batch, decoded) == []
+
+
+# --- fewer lines than the source (truncation) -------------------------------
+
+
+def test_validate_reports_a_truncated_merge():
+    # Issue #19, E02 [87]: the second line of the cue is gone.
+    source = "If you shoot to save someone,\nyou have to write an apology."
+    batch = make_batches([SourceEntry(87, source)], size=1)[0]
+    decoded = llm.decode_entries("[87] ถ้ายิงเพื่อช่วยคน")
+    issues = llm.validate(batch, decoded)
+    assert [issue.kind for issue in issues] == ["truncation"]
+    assert "fewer" in issues[0].message
+    assert issues[0].soft is True
+
+
+def test_validate_accepts_a_short_but_safe_merge():
+    # 0.5 of the source length: Thai simply needs fewer characters here.
+    source = "You were just really good\nin the play."
+    batch = make_batches([SourceEntry(1, source)], size=1)[0]
+    decoded = llm.decode_entries("[1] เธอเก่งมากในละคร")
+    assert llm.validate(batch, decoded) == []
+
+
+def test_validate_does_not_retry_a_terse_one_line_cue():
+    source = "Where do you think you're going?"
+    batch = make_batches([SourceEntry(1, source)], size=1)[0]
+    decoded = llm.decode_entries("[1] จะไปไหนกัน")
+    assert llm.validate(batch, decoded) == []
+
+
+def test_validate_does_not_retry_a_non_verbal_merge():
+    batch = make_batches([SourceEntry(1, "Mm-hmm.\nMm-hmm.")], size=1)[0]
+    decoded = llm.decode_entries("[1] อืม")
+    assert llm.validate(batch, decoded) == []

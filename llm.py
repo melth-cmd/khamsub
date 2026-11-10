@@ -78,17 +78,22 @@ class BadResponse(LLMError):
 
 @dataclass(frozen=True)
 class Issue:
-    """A problem found in a reply: parsing, identity or language."""
+    """A problem found in a reply: parsing, identity or language.
+
+    `soft` means "ask once more, then keep the reply": a short merge may be a
+    truncation or just compact Thai, and neither is worth leaving English for.
+    """
 
     kind: str
     # parsing:  "duplicate" | "empty"
     # identity: "missing" | "extra"
     # language: "missing_thai" | "foreign_script" | "lost_token" | "mixed_script"
-    # layout:   "extra_lines"
+    # layout:   "extra_lines" | "truncation" (soft)
     # tags:     "tag_mismatch"
     # other:    "bad_response"
     index: int | None
     message: str
+    soft: bool = False
 
 
 # Name kept for the parsing-only case, which reads better at the call site.
@@ -315,6 +320,24 @@ def mixed_script(text: str) -> list[str]:
     return found
 
 
+# A reply that merges a multi-line cue into fewer lines is normal layout; one
+# that also comes back far shorter has lost text. 0.4 sits below the lowest
+# legitimate two-to-one merge measured on the cached runs in subs/ (0.48) and
+# above the two truncations in issue #19 (0.354 and 0.333).
+TRUNCATION_RATIO = 0.4
+# Below this many source characters a ratio says nothing ("Yes." -> "ใช่").
+_TRUNCATION_MIN_CHARS = 4
+
+
+def _content_length(text: str) -> int:
+    """Meaningful characters: tags, placeholders and whitespace removed.
+
+    verify.content_length() is the same measure, but verify imports this module,
+    so the two lines live here instead of in a circular import.
+    """
+    return len(re.sub(r"\s+", "", tags.strip_markup(text)))
+
+
 def validate(batch: Batch, decoded: Decoded) -> list[Issue]:
     """Check a parsed reply against the batch that asked for it.
 
@@ -373,15 +396,33 @@ def validate(batch: Batch, decoded: Decoded) -> list[Issue]:
                 )
             )
 
-        extra = layout.line_count(text) - layout.line_count(source)
-        if extra > 0:
+        line_difference = layout.line_count(text) - layout.line_count(source)
+        if line_difference > 0:
             issues.append(
                 Issue(
                     "extra_lines",
                     index,
-                    f"entry [{index}] has {extra} more line(s) than the source",
+                    f"entry [{index}] has {line_difference} more line(s) "
+                    "than the source",
                 )
             )
+        elif line_difference < 0 and not is_non_verbal(source):
+            source_length = _content_length(source)
+            kept_length = _content_length(text)
+            if (
+                source_length >= _TRUNCATION_MIN_CHARS
+                and kept_length / source_length < TRUNCATION_RATIO
+            ):
+                issues.append(
+                    Issue(
+                        "truncation",
+                        index,
+                        f"entry [{index}] has {-line_difference} line(s) fewer than "
+                        f"the source and only {kept_length / source_length:.0%} of "
+                        "its length",
+                        soft=True,
+                    )
+                )
 
         for tag_issue in tags.check(source, text):
             issues.append(

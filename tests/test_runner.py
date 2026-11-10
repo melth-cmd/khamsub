@@ -133,6 +133,38 @@ def test_placeholder_loss_is_retried(fake_client):
     assert result.as_dict() == {1: "{0}สวัสดี{1}"}
 
 
+def test_a_truncated_merge_is_retried(fake_client):
+    # Issue #19: a two-line cue came back holding only its first half.
+    fake_client.queue("[1] ถ้ายิงเพื่อช่วยคน")
+    fake_client.queue("[1] ถ้ายิงเพื่อช่วยคน\nคุณต้องเขียนคำขอโทษ")
+    source = "If you shoot to save someone,\nyou have to write an apology."
+    result, _ = run(batch_of([(1, source)]), fake_client)
+    assert fake_client.call_count == 2
+    assert result.failures == []
+    assert result.as_dict()[1].count("\n") == 1
+
+
+def test_a_second_short_reply_is_kept_not_left_in_english(fake_client):
+    # A compact but complete merge can look like a truncation, so a repeat is
+    # accepted: English would be the worse guess.
+    fake_client.queue("[1] ถ้ายิงเพื่อช่วยคน")
+    fake_client.queue("[1] ถ้ายิงเพื่อช่วยคน")
+    source = "If you shoot to save someone,\nyou have to write an apology."
+    result, _ = run(batch_of([(1, source)]), fake_client)
+    assert fake_client.call_count == 2
+    assert result.failures == []
+    assert result.as_dict() == {1: "ถ้ายิงเพื่อช่วยคน"}
+
+
+def test_a_short_reply_with_no_retries_left_is_kept(fake_client):
+    fake_client.queue("[1] ถ้ายิงเพื่อช่วยคน")
+    source = "If you shoot to save someone,\nyou have to write an apology."
+    result, _ = run(batch_of([(1, source)]), fake_client, max_retries=0)
+    assert fake_client.call_count == 1
+    assert result.failures == []
+    assert result.as_dict() == {1: "ถ้ายิงเพื่อช่วยคน"}
+
+
 # --- giving up --------------------------------------------------------------
 
 

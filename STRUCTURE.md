@@ -101,6 +101,7 @@ Real bugs, and where each one lived. Useful when a symptom looks new.
 | a Thai word split in half at a line break | `layout.py` — floor on piece length, no character offsets |
 | `ทwerp`: Latin glued to Thai, shipped unreported | `llm.mixed_script`, `verify.mixed_script` |
 | three lines where the source had two | `llm.validate` (`extra_lines`) then `layout._merge_down` |
+| half a cue missing, merged into one short line | `llm.validate` (soft `truncation`) + `verify.truncation_flag` |
 | a cue opening with the line above it | the `extra_lines` retry, plus `verify.bleed_flag` |
 | a number, URL or code lost in translation | `llm.missing_kept`, reported as `lost_token` |
 | speaker dashes ignored entirely | `layout.DASHES` was missing U+2010 |

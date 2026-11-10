@@ -12,6 +12,7 @@ Flag kinds:
   empty                nothing but whitespace, tags or placeholders came back
   short / long         the length is far from the source's (advisory)
   line_count           a different number of lines than the source
+  truncation           fewer lines than the source and far shorter: text is lost
   bleed                the first line repeats a line from the cue above
   dashes_lost          a speaker dash the source had is gone
   tag_mismatch         formatting tags are missing or invented
@@ -51,6 +52,7 @@ KINDS: tuple[str, ...] = (
     "short",
     "long",
     "line_count",
+    "truncation",
     "bleed",
     "dashes_lost",
     "tag_mismatch",
@@ -67,6 +69,14 @@ MIN_LENGTH_RATIO = 0.15
 MAX_LENGTH_RATIO = 4.0
 # Below this many source characters a ratio says nothing ("Yes." -> "ใช่").
 MIN_COMPARE_CHARS = 4
+
+# A merge that is also far shorter has lost text rather than saved a line. On
+# the 16 cached runs in subs/ (10,083 pairs) the Thai/English content ratio is
+# 0.97 at the median and 0.53 at p1, the lowest legitimate two-to-one merge is
+# 0.48, and the two truncations in issue #19 were 0.354 and 0.333. The check is
+# scoped to merges because a one-line cue can be legitimately terse
+# ("Bend your knees." -> "งอเข่า" is 0.43).
+TRUNCATION_RATIO = 0.45
 
 # Latin words, keeping apostrophes inside a word ("Gandalf's", "don't").
 _ENGLISH_WORD_RE = re.compile(r"[A-Za-z]+(?:['\u2019][A-Za-z]+)*")
@@ -321,6 +331,36 @@ def length_flags(index: int, source: str, translated: str) -> list[Flag]:
     return []
 
 
+def truncation_flag(index: int, source: str, translated: str) -> Flag | None:
+    """A merge that lost text: fewer lines than the source and far shorter.
+
+    Only merges are judged, so a terse one-line cue is never called truncated.
+    The two known cases (issue #19) were 2-line cues that came back as one line
+    holding only the first half.
+    """
+    source_lines = layout.line_count(source)
+    translated_lines = layout.line_count(translated)
+    if translated_lines >= source_lines:
+        return None
+
+    source_length = content_length(source)
+    translated_length = content_length(translated)
+    if source_length < MIN_COMPARE_CHARS or translated_length == 0:
+        return None
+
+    share = translated_length / source_length
+    if share >= TRUNCATION_RATIO:
+        return None
+    return Flag(
+        index,
+        "truncation",
+        f"possible truncation: {source_lines} line(s) in, {translated_lines} out, "
+        f"only {share:.0%} of the source length",
+        source,
+        translated,
+    )
+
+
 def check_entry(
     index: int,
     source: str,
@@ -328,8 +368,13 @@ def check_entry(
     terms: Sequence[glossary.Term] = (),
     ok: bool = True,
     reason: str | None = None,
+    rewrapped: str | None = None,
 ) -> list[Flag]:
-    """Every flag one entry deserves, in KINDS order."""
+    """Every flag one entry deserves, in KINDS order.
+
+    `rewrapped` is the layout result for the entry, so a merge layout.py made
+    on purpose reads differently from a merge it refused to split.
+    """
     if not ok:
         message = "left in English" + (f" ({reason})" if reason else "")
         return [Flag(index, "failed", message, source, translated)]
@@ -343,16 +388,18 @@ def check_entry(
 
     source_lines = layout.line_count(source)
     translated_lines = layout.line_count(translated)
-    if source_lines != translated_lines:
-        flags.append(
-            Flag(
-                index,
-                "line_count",
-                f"{source_lines} line(s) in the source, {translated_lines} in the translation",
-                source,
-                translated,
-            )
+    truncated = truncation_flag(index, source, translated)
+    if truncated is not None:
+        # This says more than line_count would, so it replaces that flag.
+        flags.append(truncated)
+    elif source_lines != translated_lines:
+        message = (
+            f"{source_lines} line(s) in the source, "
+            f"{translated_lines} in the translation"
         )
+        if rewrapped == "unrepaired" and translated_lines < source_lines:
+            message = "left merged by layout repair (no safe break point)"
+        flags.append(Flag(index, "line_count", message, source, translated))
 
     source_dashes = layout.dash_count(source)
     translated_dashes = layout.dash_count(translated)
@@ -412,6 +459,7 @@ def verify_file(translated: Verifiable, terms: Sequence[glossary.Term] = ()) -> 
             terms,
             ok=getattr(result, "ok", True),
             reason=getattr(result, "reason", None),
+            rewrapped=getattr(result, "rewrapped", None),
         )
         bleed = bleed_flag(
             result.index, previous_source, previous_text, source, result.text

@@ -149,6 +149,7 @@ def translate_batch(
     attempts: dict[int, int] = {entry.index: 0 for entry in batch.items}
     reasons: dict[int, str] = {}
     retries_used = 0
+    soft_retried: set[int] = set()
 
     while pending:
         sub_batch = Batch(
@@ -193,7 +194,32 @@ def translate_batch(
             decoded = llm.Decoded()
             issues = [Issue("bad_response", None, str(exc))]
 
-        broken = {issue.index for issue in issues if issue.index is not None}
+        hard = {
+            issue.index
+            for issue in issues
+            if issue.index is not None and not issue.soft and issue.index in pending
+        }
+        soft = {
+            issue.index
+            for issue in issues
+            if issue.index is not None and issue.soft and issue.index in pending
+        }
+        # A soft issue (a merge that came back short) is asked once more, then
+        # kept: compact Thai and a truncated cue look alike, and English is the
+        # worse guess. It shares the retry budget with everything else.
+        again = {
+            index
+            for index in soft
+            if index not in soft_retried and retries_used < max_retries
+        }
+        broken = hard | again
+        soft_retried |= again
+        if again:
+            log.warning(
+                "entry [%s] came back short, asking once more",
+                ", ".join(str(index) for index in sorted(again)),
+            )
+
         for index in list(pending):
             if index in decoded.entries and index not in broken:
                 result.entries.append(
@@ -216,12 +242,13 @@ def translate_batch(
         if not pending:
             break
 
-        log.warning(
-            "%d entr%s still failing (%s)",
-            len(pending),
-            "y" if len(pending) == 1 else "ies",
-            ", ".join(sorted({reasons.get(i, "unknown") for i in pending})),
-        )
+        if set(pending) - again:
+            log.warning(
+                "%d entr%s still failing (%s)",
+                len(pending),
+                "y" if len(pending) == 1 else "ies",
+                ", ".join(sorted({reasons.get(i, "unknown") for i in pending})),
+            )
 
         if retries_used >= max_retries:
             _mark_failed(result, batch, pending, attempts, reasons, "unknown")
