@@ -384,6 +384,30 @@ def truncation_flag(index: int, source: str, translated: str) -> Flag | None:
     )
 
 
+def check_text(
+    index: int,
+    translated: str,
+    terms: Sequence[glossary.Term] = (),
+    source: str = "",
+) -> list[Flag]:
+    """The checks that need only the Thai text, not its source.
+
+    They are: an empty translation, Latin glued to Thai, and English left in
+    the text. `--repair` runs these on files whose source is missing or only
+    partly aligned; `check_entry` adds the source-dependent checks around them.
+
+    `source` is only copied into the flags for the report -- no check reads it,
+    so a caller without a source can leave it empty.
+    """
+    if content_length(translated) == 0:
+        return [Flag(index, "empty", "the translation is empty", source, translated)]
+
+    flags: list[Flag] = []
+    flags.extend(mixed_script(index, source, translated))
+    flags.extend(leftover_english(index, source, translated, terms))
+    return flags
+
+
 def check_entry(
     index: int,
     source: str,
@@ -402,10 +426,13 @@ def check_entry(
         message = "left in English" + (f" ({reason})" if reason else "")
         return [Flag(index, "failed", message, source, translated)]
 
-    if content_length(translated) == 0:
-        return [Flag(index, "empty", "the translation is empty", source, translated)]
+    text_flags = check_text(index, translated, terms, source)
     if llm.is_non_verbal(source):
-        return []
+        # A kept "[MUSIC PLAYING]" is not leftover English; only emptiness
+        # still matters for a non-verbal source.
+        return [flag for flag in text_flags if flag.kind == "empty"]
+    if any(flag.kind == "empty" for flag in text_flags):
+        return text_flags
 
     flags: list[Flag] = []
 
@@ -456,8 +483,7 @@ def check_entry(
         )
 
     flags.extend(glossary_flags(index, source, translated, terms))
-    flags.extend(mixed_script(index, source, translated))
-    flags.extend(leftover_english(index, source, translated, terms))
+    flags.extend(text_flags)
     flags.extend(length_flags(index, source, translated))
     return flags
 

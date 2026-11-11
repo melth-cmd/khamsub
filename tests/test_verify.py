@@ -341,6 +341,33 @@ def test_a_non_verbal_source_keeps_its_stop():
     assert verify.check_entry(1, "Mm-hmm.", "Mm-hmm.") == []
 
 
+# --- check_text (source-free checks) ----------------------------------------
+
+
+def test_check_text_flags_an_empty_translation_only():
+    assert [flag.kind for flag in verify.check_text(1, " {0} ")] == ["empty"]
+
+
+def test_check_text_flags_latin_glued_to_thai():
+    flags = verify.check_text(841, "ทwerp!")
+    assert [flag.kind for flag in flags] == ["mixed_script"]
+
+
+def test_check_text_flags_leftover_english():
+    flags = verify.check_text(1, "สวัสดี world")
+    assert [flag.kind for flag in flags] == ["english_left"]
+    assert flags[0].source == ""
+
+
+def test_check_text_lets_a_keep_term_through():
+    assert verify.check_text(1, "NASA", [term("NASA", "keep")]) == []
+
+
+def test_check_text_copies_a_source_into_the_report_flags():
+    flags = verify.check_text(1, "สวัสดี world", source="Hello world.")
+    assert flags[0].source == "Hello world."
+
+
 # --- check_entry ------------------------------------------------------------
 
 
