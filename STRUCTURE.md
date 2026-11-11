@@ -25,6 +25,7 @@ khamsub/
 ├── .env.example       # template for ./.env (the API key); .env is gitignored
 ├── paths.py           # where config.toml and .env are looked for (folder, then
 │                      #   ~/.config/khamsub, or XDG_CONFIG_HOME/khamsub)
+├── align.py           # --repair: pair English and Thai cues by time
 ├── srtio.py           # read/write .srt, encoding fallback, output + sidecar naming
 ├── tags.py            # {0} placeholders: protect / check / restore formatting tags
 ├── hi.py              # strip SDH descriptions ("[door slams]"), keep "[Maya]"
@@ -52,6 +53,10 @@ khamsub/
 
 `subs/` holds real subtitle files to try things on and everything the tool writes
 next to them. Nothing in it is source.
+
+`align.py` is the only module that compares two files. It matches an English cue
+to a Thai cue by time only, never by text, and refuses split, merged or drifting
+files instead of guessing.
 
 ## One run, in order
 
