@@ -63,6 +63,7 @@ def test_missing_input_file_is_an_error(project, fake, capsys):
 
 def test_missing_api_key_is_an_error(project, monkeypatch, capsys):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(project)  # no .env here, so the repo's file cannot leak in
     monkeypatch.setattr(config, "OpenRouterClient", None, raising=False)
     status = translate.main(
         [str(project / "sample.en.srt"), "--config", str(project / "config.toml")]

@@ -25,10 +25,15 @@ Requires Python 3.11+.
     python -m venv .venv && source .venv/bin/activate
     pip install -r requirements.txt
 
-Get an API key from openrouter.ai and export it. The key is read from the
-environment only; it is never written to config or to the cache.
+Get an API key from openrouter.ai, copy the example file and put it in:
 
-    export OPENROUTER_API_KEY=your-key-here
+    cp .env.example .env
+    # then edit .env and set OPENROUTER_API_KEY=your key
+
+`.env` is read from the directory you run the tool in, and it is gitignored.
+The real environment wins if both are set, so a shell export (`export
+OPENROUTER_API_KEY=...`) and a CI secret still work. The key is never written
+to config or to the cache, and it is never printed.
 
 Open `config.toml` and check `[llm] model`. The default is an example model; use
 any model that writes good Thai and that your key can call.

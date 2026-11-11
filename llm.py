@@ -11,7 +11,8 @@ continuation of the entry above it, so multi-line subtitles survive the trip.
 
 Transport failures are translated into typed errors. Nothing here retries:
 the caller (step 5) decides what is worth re-requesting. The API key is read
-from the environment only, and never logged, stored or rendered.
+from the environment, falling back to ./.env, and never logged, stored or
+rendered.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Mapping, Protocol, Sequence
 
 import layout
@@ -33,6 +35,7 @@ log = logging.getLogger(__name__)
 
 PROMPT_VERSION = 3
 DEFAULT_KEY_ENV = "OPENROUTER_API_KEY"
+DEFAULT_ENV_FILE = Path(".env")
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
 # A new entry starts at "[12]"; everything else continues the one before it.
@@ -716,20 +719,68 @@ def looks_like_key(value: str) -> bool:
     return bool(_SECRET_SHAPED_RE.match(value.strip()))
 
 
-def load_api_key(key_env: str = DEFAULT_KEY_ENV) -> str:
-    """Read the API key from the environment. Never logs it."""
+def read_env_file(path: str | Path = DEFAULT_ENV_FILE) -> dict[str, str]:
+    """Read simple KEY=VALUE lines from a .env file. Never logs a value.
+
+    Only the shape a key file needs: comments, blank lines, an optional
+    `export`, and one pair of surrounding quotes. There is no expansion, no
+    inline-comment stripping and no escaping, so a value is taken literally.
+    A missing or unreadable file is an empty result, not an error.
+
+    The values are returned, not installed into os.environ: this reads one key,
+    it does not change the environment for the rest of the process.
+    """
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return {}
+
+    values: dict[str, str] = {}
+    for number, line in enumerate(text.splitlines(), start=1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        name, sign, value = line.partition("=")
+        name = name.strip()
+        if not sign or not name:
+            log.warning("%s line %d: not KEY=VALUE, ignored", path, number)
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        values[name] = value
+    return values
+
+
+def load_api_key(
+    key_env: str = DEFAULT_KEY_ENV, env_file: str | Path | None = DEFAULT_ENV_FILE
+) -> str:
+    """Read the API key from the environment, then from ./.env. Never logs it.
+
+    The real environment wins, so a shell export or CI secret always overrides
+    the file. An empty variable counts as not set. `env_file=None` skips the
+    file entirely.
+    """
     if looks_like_key(key_env):
         # The user pasted the key into key_env. Say so without repeating it.
         raise AuthError(
             "config key_env holds something that looks like an API key.\n"
             "key_env must be the NAME of the variable, e.g. \"OPENROUTER_API_KEY\".\n"
-            "Put the key itself in your shell environment instead."
+            "Put the key itself in the environment or in ./.env instead."
         )
 
     key = os.environ.get(key_env, "").strip()
+    if not key and env_file is not None:
+        key = read_env_file(env_file).get(key_env, "").strip()
     if not key:
         raise AuthError(
-            f"{key_env} is not set. Export it in your shell, e.g.\n"
+            f"{key_env} is not set. Put it in ./.env, next to where you run:\n"
+            f"  cp .env.example .env\n"
+            f"  # then edit .env and set {key_env}=your-key-here\n"
+            f"Or export it in your shell:\n"
             f"  export {key_env}=your-key-here"
         )
     return key
@@ -778,7 +829,8 @@ class OpenRouterClient:
 
     OpenRouter by default, but base_url and key_env come from config, so any
     OpenAI-compatible endpoint (DeepSeek, Groq, a local vLLM...) works the same
-    way. SDK retries are disabled: the runner owns the retry budget.
+    way. The key comes from the environment or ./.env. SDK retries are
+    disabled: the runner owns the retry budget.
     """
 
     def __init__(

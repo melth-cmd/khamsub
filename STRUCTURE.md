@@ -21,6 +21,7 @@ khamsub/
 ├── translate.py       # CLI: flags, pre-flight, run summary, --dry-run
 ├── config.py          # loads and validates config.toml; builds the model client
 ├── config.toml        # user settings (model, batch, prices fallback)
+├── .env.example       # template for ./.env (the API key); .env is gitignored
 ├── srtio.py           # read/write .srt, encoding fallback, output + sidecar naming
 ├── tags.py            # {0} placeholders: protect / check / restore formatting tags
 ├── hi.py              # strip SDH descriptions ("[door slams]"), keep "[Maya]"
@@ -55,7 +56,8 @@ This is the mental model to use when the change you want is not in the table
 below. Each step names the file that owns it.
 
 1. `translate.py` parses the flags, loads `config.toml` through `config.py`, and
-   builds the client.
+   builds the client (the key comes from the environment or `./.env`, at that
+   moment).
 2. `srtio.load_srt` parses the file, normalising encoding and line endings.
 3. `pipeline.prepare` strips SDH descriptions (`hi.py`), joins source lines that
    were wrapped mid-sentence (`layout.normalise_source`), and protects formatting

@@ -209,8 +209,9 @@ def test_load_api_key_custom_env_name(monkeypatch):
     assert llm.load_api_key("OTHER_PROVIDER_KEY") == "abc"
 
 
-def test_load_api_key_missing_raises_auth_error(monkeypatch):
+def test_load_api_key_missing_raises_auth_error(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)  # no .env here, so the repo's file cannot leak in
     with pytest.raises(llm.AuthError) as excinfo:
         llm.load_api_key()
     assert "OPENROUTER_API_KEY" in str(excinfo.value)
@@ -224,11 +225,97 @@ def test_key_pasted_into_key_env_is_rejected_without_echoing_it(monkeypatch):
     assert "NAME of the variable" in str(excinfo.value)
 
 
-def test_missing_key_message_never_contains_a_key(monkeypatch):
+def test_missing_key_message_never_contains_a_key(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    monkeypatch.chdir(tmp_path)
     with pytest.raises(llm.AuthError) as excinfo:
         llm.load_api_key()
     assert "sk-" not in str(excinfo.value)
+
+
+# --- .env -------------------------------------------------------------------
+
+
+def test_read_env_file_parses_the_simple_shape(tmp_path):
+    path = tmp_path / ".env"
+    path.write_text(
+        "# comment\n"
+        "\n"
+        "export OPENROUTER_API_KEY='sk-test-123'\n"
+        'OTHER="a=b#c"\n'
+        "SPACED =  padded  \n"
+        "NO_EQUALS\n",
+        encoding="utf-8",
+    )
+    assert llm.read_env_file(path) == {
+        "OPENROUTER_API_KEY": "sk-test-123",
+        "OTHER": "a=b#c",
+        "SPACED": "padded",
+    }
+
+
+def test_read_env_file_handles_a_bom_and_crlf(tmp_path):
+    path = tmp_path / ".env"
+    path.write_bytes(b"\xef\xbb\xbfKEY=value\r\nSECOND=two\r\n")
+    assert llm.read_env_file(path) == {"KEY": "value", "SECOND": "two"}
+
+
+def test_read_env_file_missing_is_empty(tmp_path):
+    assert llm.read_env_file(tmp_path / "nope") == {}
+
+
+def test_env_file_is_read_when_the_variable_is_missing(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=from-file\n", encoding="utf-8")
+    assert llm.load_api_key() == "from-file"
+
+
+def test_real_environment_beats_the_env_file(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=from-file\n", encoding="utf-8")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "from-env")
+    assert llm.load_api_key() == "from-env"
+
+
+def test_an_empty_variable_falls_back_to_the_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "   ")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=from-file\n", encoding="utf-8")
+    assert llm.load_api_key() == "from-file"
+
+
+def test_the_env_file_uses_the_configured_variable_name(monkeypatch, tmp_path):
+    monkeypatch.delenv("OTHER_PROVIDER_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "OPENROUTER_API_KEY=wrong\nOTHER_PROVIDER_KEY=right\n", encoding="utf-8"
+    )
+    assert llm.load_api_key("OTHER_PROVIDER_KEY") == "right"
+
+
+def test_the_env_file_can_be_disabled(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=from-file\n", encoding="utf-8")
+    with pytest.raises(llm.AuthError):
+        llm.load_api_key(env_file=None)
+
+
+def test_the_env_file_is_not_loaded_into_the_environment(monkeypatch, tmp_path):
+    monkeypatch.delenv("KHAMSUB_TEST_ONLY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("KHAMSUB_TEST_ONLY=secret\n", encoding="utf-8")
+    assert llm.read_env_file() == {"KHAMSUB_TEST_ONLY": "secret"}
+    assert "KHAMSUB_TEST_ONLY" not in os.environ
+
+
+def test_missing_key_message_points_at_the_env_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(llm.AuthError) as excinfo:
+        llm.load_api_key()
+    assert "cp .env.example .env" in str(excinfo.value)
 
 
 # --- error mapping ----------------------------------------------------------
@@ -405,8 +492,11 @@ def test_empty_choices_is_bad_response():
 @pytest.mark.live
 def test_live_smoke_translates_three_entries():
     """Real OpenRouter call. Run with: pytest -m live"""
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        pytest.skip("OPENROUTER_API_KEY not set")
+    if not (
+        os.environ.get("OPENROUTER_API_KEY")
+        or llm.read_env_file().get("OPENROUTER_API_KEY")
+    ):
+        pytest.skip("OPENROUTER_API_KEY not set in the environment or ./.env")
 
     settings = tomllib.loads(CONFIG.read_text())["llm"]
     client = llm.OpenRouterClient(

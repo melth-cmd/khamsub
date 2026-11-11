@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- `./.env` is read for the API key when the environment variable is unset, so
+  `cp .env.example .env` then editing one line is enough to start. The real
+  environment still wins, the file is only read, and the key is never logged.
+- `.env.example` is the template for that file; `.env` stays gitignored, and the
+  pre-commit hook now allows the example while still refusing a real key.
+
 ## [0.2.1] - 2026-11-10
 
 ### Added

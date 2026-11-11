@@ -137,8 +137,9 @@ def test_build_client_requires_a_model():
         config.build_client(config.Settings())
 
 
-def test_build_client_requires_the_key(monkeypatch):
+def test_build_client_requires_the_key(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
     settings = config.settings_from_dict({"llm": {"model": "m/x"}})
     with pytest.raises(llm.AuthError):
         config.build_client(settings)

@@ -5,7 +5,8 @@ type-checked and range-checked on load: a typo should fail immediately with a
 clear message, not four hundred subtitles into a paid run.
 
 The API key is not a setting. It is read from the environment named by
-[llm] key_env, at the moment the client is built, and never stored.
+[llm] key_env (or ./.env when that is empty), at the moment the client is
+built, and never stored.
 """
 
 from __future__ import annotations
@@ -264,7 +265,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
 
 
 def build_client(settings: Settings, api_key: str | None = None) -> llm.OpenRouterClient:
-    """Create the chat client from settings, reading the key from the environment.
+    """Create the chat client from settings, reading the key from the env or .env.
 
     The API is OpenRouter by default; any OpenAI-compatible endpoint works by
     changing base_url, key_env and model.

@@ -4,8 +4,9 @@
     python translate.py *.en.srt --config my.toml
     python translate.py input.en.srt --bible-only
 
-The API key comes from the environment variable named in [llm] key_env. It is
-read only when the client is built, and never printed.
+The API key comes from the environment variable named in [llm] key_env, or
+from ./.env when that is empty. It is read only when the client is built, and
+never printed.
 """
 
 from __future__ import annotations

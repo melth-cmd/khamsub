@@ -29,8 +29,11 @@ if found=$(git grep --cached -l -I -E '^[[:space:]]*(key_env|api_key|secret|toke
     [ -n "$found" ] && report "config field appears to hold a key, not an env var name:" $found
 fi
 
-# 3. Files that should never be tracked at all.
-found=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)\.env($|\.)|\.pem$|\.key$|(^|/)id_rsa$')
+# 3. Files that should never be tracked at all. Templates such as
+#    .env.example carry no secret and are meant to be committed.
+found=$(git diff --cached --name-only --diff-filter=ACM \
+    | grep -E '(^|/)\.env($|\.)|\.pem$|\.key$|(^|/)id_rsa$' \
+    | grep -vE '(^|/)\.env\.(example|sample|template)$')
 [ -n "$found" ] && report "secret-bearing file staged:" $found
 
 if [ "$status" -ne 0 ]; then
