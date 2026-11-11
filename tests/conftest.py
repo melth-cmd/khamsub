@@ -59,3 +59,9 @@ def _no_price_fetch(monkeypatch):
     import pricing
 
     monkeypatch.setattr(pricing, "fetch_price", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
+def _empty_user_config(tmp_path, monkeypatch):
+    """Never read the developer's real ~/.config/khamsub during a test."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))

@@ -19,6 +19,7 @@ except ImportError:  # pragma: no cover
     import httpx
 
 import llm
+import paths
 from batcher import ContextLine, SourceEntry, make_batches
 from helpers import make_batch
 
@@ -299,7 +300,50 @@ def test_the_env_file_can_be_disabled(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=from-file\n", encoding="utf-8")
     with pytest.raises(llm.AuthError):
-        llm.load_api_key(env_file=None)
+        llm.load_api_key(env_files=())
+
+
+def test_the_current_env_file_beats_the_user_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    (work / ".env").write_text("OPENROUTER_API_KEY=from-current\n", encoding="utf-8")
+    user = paths.user_dir()
+    user.mkdir(parents=True)
+    (user / ".env").write_text("OPENROUTER_API_KEY=from-user\n", encoding="utf-8")
+    assert llm.load_api_key() == "from-current"
+
+
+def test_the_user_env_file_is_the_last_fallback(monkeypatch, tmp_path, caplog):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    user = paths.user_dir()
+    user.mkdir(parents=True)
+    (user / ".env").write_text("OPENROUTER_API_KEY=from-user\n", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert llm.load_api_key() == "from-user"
+    assert "no .env in the current folder" in caplog.text
+
+
+def test_key_source_reports_the_environment(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "x")
+    assert llm.key_source() == ("environment", None)
+
+
+def test_key_source_reports_the_file_it_found(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=from-file\n", encoding="utf-8")
+    assert llm.key_source() == ("file", Path(".env"))
+
+
+def test_key_source_reports_missing(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert llm.key_source() == ("missing", None)
 
 
 def test_the_env_file_is_not_loaded_into_the_environment(monkeypatch, tmp_path):
@@ -316,6 +360,17 @@ def test_missing_key_message_points_at_the_env_file(monkeypatch, tmp_path):
     with pytest.raises(llm.AuthError) as excinfo:
         llm.load_api_key()
     assert "cp .env.example .env" in str(excinfo.value)
+
+
+def test_missing_key_message_points_at_an_existing_empty_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=\n", encoding="utf-8")
+    with pytest.raises(llm.AuthError) as excinfo:
+        llm.load_api_key()
+    text = str(excinfo.value)
+    assert "edit .env" in text
+    assert "cp .env.example" not in text
 
 
 # --- error mapping ----------------------------------------------------------

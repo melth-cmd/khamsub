@@ -32,10 +32,26 @@ Get an API key from openrouter.ai, copy the example file and put it in:
 
 If `.env` already exists, edit it in place: copying the example over it would
 replace the key. `.env` is read from the directory you run the tool in, and it
-is gitignored.
-The real environment wins if both are set, so a shell export (`export
-OPENROUTER_API_KEY=...`) and a CI secret still work. The key is never written
-to config or to the cache, and it is never printed.
+is gitignored. The real environment wins if both are set, so a shell export
+(`export OPENROUTER_API_KEY=...`) and a CI secret still work. The key is never
+written to config or to the cache, and it is never printed.
+
+To keep the key and settings in one place for every folder, create the
+user-wide files once:
+
+    python translate.py --init-config
+
+That writes `~/.config/khamsub/config.toml` and `~/.config/khamsub/.env` (mode
+0600) and leaves existing files alone. Edit the key there, check `[llm] model`
+in the config, and every folder uses them. A `config.toml` or `.env` in the
+current folder still wins, so one show can override the defaults.
+`XDG_CONFIG_HOME` is honoured if you set it.
+
+    python translate.py --where
+
+shows which files a run would use and whether they exist, and where the key
+would come from. It never prints the key. If no config exists at all, the tool
+says so once and falls back to its built-in defaults.
 
 Open `config.toml` and check `[llm] model`. The default is an example model; use
 any model that writes good Thai and that your key can call.
@@ -92,6 +108,14 @@ can be compared.
 
     python translate.py "Show.en.srt" --config mine.toml
       Use another config file.
+
+    python translate.py --where
+      Show which config.toml and .env files a run would use, then exit. It
+      never prints the key.
+
+    python translate.py --init-config
+      Create ~/.config/khamsub/config.toml and .env, then exit. Existing files
+      are left untouched.
 
     python translate.py "Show.en.srt" -v
       Add per-batch log detail. The progress line is shown either way.

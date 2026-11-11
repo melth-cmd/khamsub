@@ -9,6 +9,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- `--where` prints every config.toml and .env path a run would use, which one
+  wins, and where the key would come from. It never prints the key.
+- `--init-config` writes `~/.config/khamsub/config.toml` and
+  `~/.config/khamsub/.env` (0600) on first use, and never overwrites either.
+- Config and key lookup now has one order: `--config`, then the current folder,
+  then `~/.config/khamsub` (honouring `XDG_CONFIG_HOME`), then built-in
+  defaults. For the key: the real environment, then `./.env`, then the user
+  file. Falling back is announced once, and a missing model or key names the
+  file to edit (or `--init-config`) while the shell export still works.
 - `./.env` is read for the API key when the environment variable is unset, so
   `cp .env.example .env` then editing one line is enough to start. The real
   environment still wins, the file is only read, and the key is never logged.

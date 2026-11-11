@@ -19,11 +19,28 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import llm
+import paths
 
 log = logging.getLogger(__name__)
 
-DEFAULT_PATH = Path(__file__).with_name("config.toml")
+# The current folder is checked first; --init-config writes the user-wide file.
+DEFAULT_PATH = paths.current_config()
+# The shipped example, copied by --init-config. After packaging this is package
+# data next to config.py, so it travels with the wheel.
+TEMPLATE_PATH = Path(__file__).with_name("config.toml")
 IMPLEMENTED_WIRE_FORMATS = ("tagged",)
+
+# Used only if the template file is missing from an install.
+MINIMAL_CONFIG = """\
+[llm]
+model = "deepseek/deepseek-v4.1-flash-1017"
+"""
+
+ENV_TEMPLATE = """\
+# Put your API key after the equals sign.
+# The real environment wins if both are set.
+OPENROUTER_API_KEY=
+"""
 
 
 class ConfigError(Exception):
@@ -242,16 +259,80 @@ def settings_from_dict(data: Mapping[str, Any], path: Path | None = None) -> Set
     )
 
 
+def candidates(explicit: str | Path | None = None) -> list[tuple[str, Path]]:
+    """(label, path) for config.toml, in the order they are tried."""
+    rows: list[tuple[str, Path]] = []
+    if explicit is not None:
+        rows.append(("--config", Path(explicit)))
+    rows.append(("current folder", DEFAULT_PATH))
+    rows.append(("user config", paths.user_config()))
+    return rows
+
+
+def locate(explicit: str | Path | None = None) -> tuple[Path | None, str]:
+    """The config file that would be used, and which rule chose it.
+
+    Returns (None, "built-in defaults") when no file exists. An explicit path
+    is returned even if it is missing, so the caller can report that.
+    """
+    if explicit is not None:
+        return Path(explicit), "--config"
+    for label, path in candidates():
+        if path.exists():
+            return path, label
+    return None, "built-in defaults"
+
+
+def key_env_from(path: str | Path | None) -> str:
+    """[llm] key_env from a config file, without validating the rest.
+
+    Used by --where: a broken config should still show which key name it would
+    have used, not stop the report.
+    """
+    if path is None:
+        return llm.DEFAULT_KEY_ENV
+    try:
+        with Path(path).open("rb") as handle:
+            data = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return llm.DEFAULT_KEY_ENV
+    section = data.get("llm")
+    if isinstance(section, Mapping):
+        value = section.get("key_env")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return llm.DEFAULT_KEY_ENV
+
+
 def load_settings(path: str | Path | None = None) -> Settings:
-    """Read config.toml. With no path, fall back to built-in defaults."""
+    """Read config.toml: --config, current folder, user dir, then defaults.
+
+    The first file that exists wins. Falling back to the user-wide file or to
+    the built-in defaults is announced once, because a run with the wrong model
+    or batch size is expensive to discover later.
+    """
     explicit = path is not None
-    config_path = Path(path) if explicit else DEFAULT_PATH
+    config_path, chosen_by = locate(path)
+
+    if config_path is None:
+        log.warning(
+            "no config.toml in the current folder or in %s; using built-in "
+            "defaults (run `khamsub --init-config` to create it)",
+            paths.short(paths.user_dir()),
+        )
+        return Settings()
 
     if not config_path.exists():
-        if explicit:
-            raise ConfigError(f"Config file not found: {config_path}")
-        log.warning("No config.toml found, using built-in defaults")
-        return Settings()
+        raise ConfigError(f"Config file not found: {config_path}")
+
+    if not explicit:
+        if chosen_by == "user config":
+            log.warning(
+                "no config.toml in the current folder; using %s",
+                paths.short(config_path),
+            )
+        else:
+            log.debug("using config %s", paths.short(config_path))
 
     try:
         with config_path.open("rb") as handle:
@@ -264,6 +345,43 @@ def load_settings(path: str | Path | None = None) -> Settings:
     return settings_from_dict(data, path=config_path)
 
 
+def template_text() -> str:
+    """The shipped example config, or a minimal one if it is missing."""
+    try:
+        return TEMPLATE_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return MINIMAL_CONFIG
+
+
+def init_config() -> list[tuple[Path, str]]:
+    """Write the user-wide config.toml and .env. Never overwrites.
+
+    Returns (path, status) for the CLI to print. The directory is private and
+    the .env is 0600, because it will hold the key.
+    """
+    directory = paths.user_dir()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+    written: list[tuple[Path, str]] = []
+
+    config_path = paths.user_config()
+    if config_path.exists():
+        written.append((config_path, "left as is"))
+    else:
+        config_path.write_text(template_text(), encoding="utf-8")
+        written.append((config_path, "created"))
+
+    env_path = paths.user_env()
+    if env_path.exists():
+        written.append((env_path, "left as is"))
+    else:
+        env_path.write_text(ENV_TEMPLATE, encoding="utf-8")
+        env_path.chmod(0o600)
+        written.append((env_path, "created (0600)"))
+
+    return written
+
+
 def build_client(settings: Settings, api_key: str | None = None) -> llm.OpenRouterClient:
     """Create the chat client from settings, reading the key from the env or .env.
 
@@ -271,7 +389,15 @@ def build_client(settings: Settings, api_key: str | None = None) -> llm.OpenRout
     changing base_url, key_env and model.
     """
     if not settings.llm.model:
-        raise ConfigError("[llm] model is empty; set a model in config.toml")
+        if settings.path is not None:
+            raise ConfigError(
+                f"[llm] model is empty. Set [llm] model in {paths.short(settings.path)}."
+            )
+        raise ConfigError(
+            "[llm] model is empty and no config.toml was found. Run "
+            f"`khamsub --init-config` to create {paths.short(paths.user_config())}, "
+            "or put a config.toml in the current folder."
+        )
     return llm.OpenRouterClient(
         model=settings.llm.model,
         api_key=api_key,

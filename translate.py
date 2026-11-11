@@ -23,6 +23,7 @@ import bible
 import config as config_module
 import glossary
 import llm
+import paths
 import pipeline
 import pricing
 import progress
@@ -37,9 +38,22 @@ def build_parser() -> argparse.ArgumentParser:
         prog="translate.py",
         description="Translate English .srt subtitles into Thai with an LLM.",
     )
-    parser.add_argument("files", nargs="+", metavar="FILE", help="English .srt file(s)")
     parser.add_argument(
-        "--config", metavar="PATH", help="Path to config.toml (default: next to this script)"
+        "files", nargs="*", metavar="FILE",
+        help="English .srt file(s); not needed with --where or --init-config",
+    )
+    parser.add_argument(
+        "--config", metavar="PATH",
+        help="Path to config.toml (default: ./config.toml, then "
+        "~/.config/khamsub/config.toml)",
+    )
+    parser.add_argument(
+        "--where", action="store_true",
+        help="Show which config.toml and .env files would be used, then exit",
+    )
+    parser.add_argument(
+        "--init-config", action="store_true",
+        help="Create ~/.config/khamsub/config.toml and .env, then exit",
     )
     parser.add_argument(
         "--output", metavar="PATH", help="Write here instead of FILE.th.srt (one file only)"
@@ -508,12 +522,82 @@ def _bible_only(
     return status
 
 
+def _where_text(explicit: str | None = None) -> str:
+    """Every path a run would use, and which one wins. Never shows the key."""
+    lines = ["config.toml:"]
+    for label, path in config_module.candidates(explicit):
+        mark = "x" if path.exists() else " "
+        lines.append(f"  [{mark}] {paths.short(path)}  ({label})")
+
+    chosen, why = config_module.locate(explicit)
+    if chosen is None:
+        lines.append("  using: built-in defaults")
+    else:
+        lines.append(f"  using: {paths.short(chosen)}  ({why})")
+
+    lines.append("")
+    lines.append(".env:")
+    for label, path in paths.env_candidates():
+        mark = "x" if path.exists() else " "
+        lines.append(f"  [{mark}] {paths.short(path)}  ({label})")
+
+    key_env = config_module.key_env_from(chosen)
+    source, key_path = llm.key_source(key_env)
+    if source == "environment":
+        lines.append(f"  {key_env}: set in the environment")
+    elif source == "file" and key_path is not None:
+        lines.append(f"  {key_env}: set in {paths.short(key_path)}")
+    else:
+        existing = next(
+            (path for _, path in paths.env_candidates() if path.exists()), None
+        )
+        if existing is not None:
+            lines.append(
+                f"  {key_env}: not set (edit {paths.short(existing)} or export it)"
+            )
+        else:
+            lines.append(
+                f"  {key_env}: not set (export it, or run: khamsub --init-config)"
+            )
+    return "\n".join(lines)
+
+
+def _init_config() -> int:
+    """Create the user-wide config.toml and .env, and say what to do next."""
+    try:
+        rows = config_module.init_config()
+    except (OSError, config_module.ConfigError) as exc:
+        print(f"error: could not create the user config: {exc}", file=sys.stderr)
+        return 1
+
+    for path, status in rows:
+        print(f"{paths.short(path)}  {status}")
+    print()
+    print("Next:")
+    print(f"  edit {paths.short(paths.user_env())} and set OPENROUTER_API_KEY")
+    print(f"  edit {paths.short(paths.user_config())} and check [llm] model")
+    print("Or export OPENROUTER_API_KEY in your shell instead of using .env.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(message)s",
     )
+
+    if args.where and args.init_config:
+        print("error: use --where or --init-config, not both", file=sys.stderr)
+        return 2
+    if args.where:
+        print(_where_text(args.config))
+        return 0
+    if args.init_config:
+        return _init_config()
+    if not args.files:
+        print("error: at least one FILE is required", file=sys.stderr)
+        return 2
 
     if args.output and len(args.files) > 1:
         print("error: --output can only be used with a single input file", file=sys.stderr)

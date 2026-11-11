@@ -1,5 +1,5 @@
 # Settings for the Thai subtitle translator.
-# The API key is NEVER stored here: set OPENROUTER_API_KEY in your environment.
+# The API key is NEVER stored here: put it in .env or in your environment.
 
 [llm]
 base_url = "https://openrouter.ai/api/v1"

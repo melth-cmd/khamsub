@@ -6,6 +6,9 @@ import pytest
 
 import config
 import llm
+import paths
+
+REPO = Path(__file__).resolve().parents[1]
 
 
 def write(tmp_path: Path, text: str) -> Path:
@@ -38,9 +41,109 @@ def test_missing_explicit_file_raises(tmp_path):
 
 
 def test_the_shipped_config_loads():
-    settings = config.load_settings()
+    settings = config.load_settings(REPO / "config.toml")
     assert settings.llm.model == "deepseek/deepseek-v4.1-flash-1017"
     assert settings.llm.key_env == "OPENROUTER_API_KEY"
+
+
+# --- discovery --------------------------------------------------------------
+
+
+def test_the_current_folder_wins_over_the_user_file(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.toml").write_text('[llm]\nmodel = "current/model"\n')
+    user = paths.user_dir()
+    user.mkdir(parents=True)
+    (user / "config.toml").write_text('[llm]\nmodel = "user/model"\n')
+    assert config.load_settings().llm.model == "current/model"
+
+
+def test_the_user_file_is_used_when_the_folder_has_none(monkeypatch, tmp_path, caplog):
+    monkeypatch.chdir(tmp_path)
+    user = paths.user_dir()
+    user.mkdir(parents=True)
+    (user / "config.toml").write_text('[llm]\nmodel = "user/model"\n')
+    with caplog.at_level("WARNING"):
+        settings = config.load_settings()
+    assert settings.llm.model == "user/model"
+    assert settings.path == user / "config.toml"
+    assert "no config.toml in the current folder" in caplog.text
+
+
+def test_no_files_at_all_uses_defaults_and_says_how_to_create_them(
+    monkeypatch, tmp_path, caplog
+):
+    monkeypatch.chdir(tmp_path)
+    with caplog.at_level("WARNING"):
+        settings = config.load_settings()
+    assert settings.batch.size == 60
+    assert settings.path is None
+    assert "--init-config" in caplog.text
+
+
+def test_an_explicit_path_is_used_without_searching(tmp_path):
+    path = tmp_path / "other.toml"
+    path.write_text('[llm]\nmodel = "explicit/model"\n')
+    assert config.load_settings(path).llm.model == "explicit/model"
+
+
+def test_candidates_put_the_flag_then_the_folder_then_the_user_dir(tmp_path):
+    rows = config.candidates(tmp_path / "mine.toml")
+    assert [label for label, _ in rows] == ["--config", "current folder", "user config"]
+    assert rows[0][1] == tmp_path / "mine.toml"
+
+
+def test_locate_reports_built_in_defaults_when_nothing_exists(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config, "DEFAULT_PATH", tmp_path / "nope.toml")
+    assert config.locate() == (None, "built-in defaults")
+
+
+def test_key_env_from_reads_only_the_key_name(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[llm]\nmodel = "m/x"\nkey_env = "OTHER"\n')
+    assert config.key_env_from(path) == "OTHER"
+    assert config.key_env_from(tmp_path / "missing.toml") == llm.DEFAULT_KEY_ENV
+    path.write_text("not toml")
+    assert config.key_env_from(path) == llm.DEFAULT_KEY_ENV
+
+
+# --- --init-config ----------------------------------------------------------
+
+
+def test_init_config_writes_both_files_and_keeps_the_env_private(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    rows = config.init_config()
+    user = tmp_path / "khamsub"
+    assert (user / "config.toml").exists()
+    assert (user / ".env").exists()
+    assert [status for _, status in rows] == ["created", "created (0600)"]
+    assert (user / ".env").stat().st_mode & 0o777 == 0o600
+    assert 'model = "deepseek/deepseek-v4.1-flash-1017"' in (
+        user / "config.toml"
+    ).read_text()
+
+
+def test_init_config_never_overwrites(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    user = tmp_path / "khamsub"
+    user.mkdir()
+    (user / "config.toml").write_text("# mine\n")
+    (user / ".env").write_text("OPENROUTER_API_KEY=keep\n")
+    rows = config.init_config()
+    assert [status for _, status in rows] == ["left as is", "left as is"]
+    assert (user / "config.toml").read_text() == "# mine\n"
+    assert (user / ".env").read_text() == "OPENROUTER_API_KEY=keep\n"
+
+
+def test_init_config_falls_back_when_the_template_is_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(config, "TEMPLATE_PATH", tmp_path / "nope.toml")
+    config.init_config()
+    text = (tmp_path / "khamsub" / "config.toml").read_text()
+    assert 'model = "deepseek/deepseek-v4.1-flash-1017"' in text
 
 
 # --- parsing ----------------------------------------------------------------

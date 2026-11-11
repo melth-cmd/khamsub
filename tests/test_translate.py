@@ -10,6 +10,7 @@ import pytest
 import bible
 import config
 import glossary
+import paths
 import srtio
 import translate
 import verify
@@ -1134,3 +1135,99 @@ def test_progress_goes_to_stderr_not_stdout(project, fake, capsys):
     captured = capsys.readouterr()
     assert "translating 3 entries in 1 batch" in captured.err
     assert "translating" not in captured.out
+
+
+# --- --where and --init-config ----------------------------------------------
+
+
+def test_where_prints_the_candidates_and_the_default_when_empty(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    status = translate.main(["--where"])
+    out = capsys.readouterr().out
+
+    assert status == 0
+    assert "config.toml:" in out and ".env:" in out
+    assert "built-in defaults" in out
+    assert "OPENROUTER_API_KEY: not set" in out
+
+
+def test_where_finds_the_user_files_without_printing_the_key(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    user = paths.user_dir()
+    user.mkdir(parents=True)
+    (user / "config.toml").write_text('[llm]\nmodel = "m/x"\n', encoding="utf-8")
+    (user / ".env").write_text("OPENROUTER_API_KEY=super-secret-value\n", encoding="utf-8")
+
+    status = translate.main(["--where"])
+    out = capsys.readouterr().out
+
+    assert status == 0
+    assert "using: " in out and "(user config)" in out
+    assert "set in " in out
+    assert "super-secret-value" not in out
+
+
+def test_where_shows_an_explicit_config(project, capsys):
+    status = translate.main(["--where", "--config", str(project / "config.toml")])
+    out = capsys.readouterr().out
+    assert status == 0
+    assert "(--config)" in out
+
+
+def test_init_config_creates_the_user_files_without_a_key(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    status = translate.main(["--init-config"])
+    out = capsys.readouterr().out
+    user = paths.user_dir()
+
+    assert status == 0
+    assert (user / "config.toml").exists()
+    assert (user / ".env").exists()
+    assert "created" in out
+    assert "Next:" in out
+    assert paths.short(user / ".env") in out
+
+
+def test_init_config_says_left_as_is_on_a_second_run(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    assert translate.main(["--init-config"]) == 0
+    capsys.readouterr()
+
+    assert translate.main(["--init-config"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("left as is") == 2
+
+
+def test_where_and_init_config_together_are_refused(capsys):
+    status = translate.main(["--where", "--init-config"])
+    assert status == 2
+    assert "not both" in capsys.readouterr().err
+
+
+def test_no_files_and_no_mode_is_an_error(capsys):
+    status = translate.main([])
+    assert status == 2
+    assert "at least one FILE" in capsys.readouterr().err
+
+
+def test_where_says_to_edit_an_existing_empty_env(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    user = paths.user_dir()
+    user.mkdir(parents=True)
+    (user / ".env").write_text("OPENROUTER_API_KEY=\n", encoding="utf-8")
+
+    assert translate.main(["--where"]) == 0
+    out = capsys.readouterr().out
+    assert "not set (edit " in out

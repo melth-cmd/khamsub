@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Mapping, Protocol, Sequence
 
 import layout
+import paths
 import tags
 from batcher import Batch, ContextLine, SourceEntry
 
@@ -35,7 +36,7 @@ log = logging.getLogger(__name__)
 
 PROMPT_VERSION = 3
 DEFAULT_KEY_ENV = "OPENROUTER_API_KEY"
-DEFAULT_ENV_FILE = Path(".env")
+DEFAULT_ENV_FILE = paths.current_env()
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
 # A new entry starts at "[12]"; everything else continues the one before it.
@@ -755,14 +756,29 @@ def read_env_file(path: str | Path = DEFAULT_ENV_FILE) -> dict[str, str]:
     return values
 
 
+def default_env_files() -> list[Path]:
+    """The .env files in search order: current folder, then the user dir."""
+    return [path for _, path in paths.env_candidates()]
+
+
+def key_source(key_env: str = DEFAULT_KEY_ENV) -> tuple[str, Path | None]:
+    """Where the key would come from: the environment, a .env file, or nowhere."""
+    if os.environ.get(key_env, "").strip():
+        return "environment", None
+    for _, path in paths.env_candidates():
+        if read_env_file(path).get(key_env, "").strip():
+            return "file", path
+    return "missing", None
+
+
 def load_api_key(
-    key_env: str = DEFAULT_KEY_ENV, env_file: str | Path | None = DEFAULT_ENV_FILE
+    key_env: str = DEFAULT_KEY_ENV, env_files: Sequence[Path] | None = None
 ) -> str:
-    """Read the API key from the environment, then from ./.env. Never logs it.
+    """Read the API key from the environment, then from .env. Never logs it.
 
     The real environment wins, so a shell export or CI secret always overrides
-    the file. An empty variable counts as not set. `env_file=None` skips the
-    file entirely.
+    the files. An empty variable counts as not set. Without `env_files`, the
+    search is ./.env then ~/.config/khamsub/.env; pass () to skip both.
     """
     if looks_like_key(key_env):
         # The user pasted the key into key_env. Say so without repeating it.
@@ -773,17 +789,41 @@ def load_api_key(
         )
 
     key = os.environ.get(key_env, "").strip()
-    if not key and env_file is not None:
-        key = read_env_file(env_file).get(key_env, "").strip()
-    if not key:
+    if key:
+        return key
+
+    pairs: Sequence[tuple[str, Path]]
+    if env_files is None:
+        pairs = paths.env_candidates()
+    else:
+        pairs = [("", Path(path)) for path in env_files]
+    for label, path in pairs:
+        key = read_env_file(path).get(key_env, "").strip()
+        if key:
+            if label == "user config":
+                log.warning(
+                    "no .env in the current folder; using %s", paths.short(path)
+                )
+            return key
+
+    existing = next((path for _, path in paths.env_candidates() if path.exists()), None)
+    if existing is not None:
         raise AuthError(
-            f"{key_env} is not set. Put it in ./.env, next to where you run:\n"
-            f"  cp .env.example .env\n"
-            f"  # then edit .env and set {key_env}=your-key-here\n"
+            f"{key_env} is not set. It is empty in {paths.short(existing)}:\n"
+            f"  edit {paths.short(existing)} and set {key_env}=your-key-here\n"
             f"Or export it in your shell:\n"
             f"  export {key_env}=your-key-here"
         )
-    return key
+
+    raise AuthError(
+        f"{key_env} is not set. Put it in ./.env, next to where you run:\n"
+        f"  cp .env.example .env\n"
+        f"  # then edit .env and set {key_env}=your-key-here\n"
+        f"Or export it in your shell:\n"
+        f"  export {key_env}=your-key-here\n"
+        f"For a user-wide file: khamsub --init-config writes "
+        f"{paths.short(paths.user_env())}"
+    )
 
 
 def _retry_after(exc: Exception) -> float | None:
