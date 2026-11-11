@@ -30,7 +30,9 @@ Get an API key from openrouter.ai, copy the example file and put it in:
     cp .env.example .env
     # then edit .env and set OPENROUTER_API_KEY=your key
 
-`.env` is read from the directory you run the tool in, and it is gitignored.
+If `.env` already exists, edit it in place: copying the example over it would
+replace the key. `.env` is read from the directory you run the tool in, and it
+is gitignored.
 The real environment wins if both are set, so a shell export (`export
 OPENROUTER_API_KEY=...`) and a CI secret still work. The key is never written
 to config or to the cache, and it is never printed.
