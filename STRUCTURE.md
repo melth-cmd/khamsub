@@ -26,6 +26,7 @@ khamsub/
 ├── paths.py           # where config.toml and .env are looked for (folder, then
 │                      #   ~/.config/khamsub, or XDG_CONFIG_HOME/khamsub)
 ├── align.py           # --repair: pair English and Thai cues by time
+├── repair.py          # --repair: safe text fixes plus a source-aware audit
 ├── srtio.py           # read/write .srt, encoding fallback, output + sidecar naming
 ├── tags.py            # {0} placeholders: protect / check / restore formatting tags
 ├── hi.py              # strip SDH descriptions ("[door slams]"), keep "[Maya]"
@@ -57,6 +58,10 @@ next to them. Nothing in it is source.
 `align.py` is the only module that compares two files. It matches an English cue
 to a Thai cue by time only, never by text, and refuses split, merged or drifting
 files instead of guessing.
+
+`repair.py` applies the safe text fixes and audits the result against the
+aligned English. It never writes a file and never calls a model; the CLI owns
+the backup and the write.
 
 ## One run, in order
 
