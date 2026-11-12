@@ -26,8 +26,9 @@ Install it as a command, from git:
 
 `pipx install git+https://github.com/melth-cmd/khamsub` is equivalent. Then
 `khamsub` works from any folder, and `uv tool upgrade khamsub` (or
-`pipx upgrade khamsub`) updates it. A wheel is attached to each release if you
-prefer `pip install` on the wheel attached to the release.
+`pipx upgrade khamsub`) updates a git install. KhamSub is not on PyPI yet, so
+`uv tool install khamsub` without a source does not work; use git or the wheel
+attached to a release.
 
 From a clone, install the checkout itself:
 
@@ -36,7 +37,10 @@ From a clone, install the checkout itself:
     uv tool install .
 
 The command on PATH is a snapshot: after editing the checkout, reinstall it, or
-run `python -m khamsub` from the clone to test the current files.
+run `python -m khamsub` from the clone to test the current files. A directory
+install is not upgradeable: `uv tool upgrade khamsub` cannot fetch anything for
+it. Pull the clone and run `uv tool install --force .`, or install from git
+instead so future upgrades are one command.
 
 Get an API key from openrouter.ai, then create the user-wide files once:
 
