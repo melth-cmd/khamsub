@@ -20,7 +20,7 @@ def pyproject() -> dict:
 def test_the_version_has_one_source():
     project = pyproject()["project"]
     assert project["dynamic"] == ["version"]
-    assert khamsub.__version__ == "0.4.0"
+    assert khamsub.__version__ == "0.4.1"
     assert (ROOT / "khamsub" / "__init__.py").read_text().count("__version__") == 1
 
 

@@ -1010,3 +1010,26 @@ def test_estimate_honours_indexes_for_a_retranslate():
     assert one.entries == 1
     assert one.batches == 1
     assert one.completion_tokens < full.completion_tokens
+
+
+def test_an_interrupted_run_keeps_finished_batches_in_the_cache(tmp_path):
+    from khamsub import cache as cache_module
+
+    path = tmp_path / "movie.cache.json"
+    store = cache_module.Cache(path, model="m")
+    client = FakeClient(["[1] หนึ่ง", KeyboardInterrupt()])
+
+    with pytest.raises(KeyboardInterrupt):
+        pipeline.translate_subtitles(
+            client,
+            [subtitle(1, "One."), subtitle(2, "Two.")],
+            size=1,
+            cache=store,
+            sleep=lambda seconds: None,
+        )
+
+    assert path.exists()
+    reloaded = cache_module.Cache(path, model="m").load()
+    assert 1 in reloaded
+    assert reloaded.get(1, "One.") == "หนึ่ง"
+    assert 2 not in reloaded

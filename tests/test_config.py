@@ -65,7 +65,7 @@ def test_the_user_file_is_used_when_the_folder_has_none(monkeypatch, tmp_path, c
     user = paths.user_dir()
     user.mkdir(parents=True)
     (user / "config.toml").write_text('[llm]\nmodel = "user/model"\n')
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("INFO"):
         settings = config.load_settings()
     assert settings.llm.model == "user/model"
     assert settings.path == user / "config.toml"

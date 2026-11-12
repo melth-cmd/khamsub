@@ -248,3 +248,15 @@ def test_select_by_indexes_after_a_range():
     entries = make_entries(10)
     selected = batcher.select_range(entries, range_="3-6", indexes={1, 4, 6, 8})
     assert [entry.index for entry in selected] == [4, 6]
+
+
+def test_the_split_summary_is_debug_only(caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="khamsub.batcher"):
+        batcher.make_batches(make_entries(3))
+    assert "Split 3 entries" not in caplog.text
+
+    with caplog.at_level(logging.DEBUG, logger="khamsub.batcher"):
+        batcher.make_batches(make_entries(3))
+    assert "Split 3 entries into 1 batch(es)" in caplog.text

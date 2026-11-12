@@ -323,7 +323,7 @@ def test_the_user_env_file_is_the_last_fallback(monkeypatch, tmp_path, caplog):
     user = paths.user_dir()
     user.mkdir(parents=True)
     (user / ".env").write_text("OPENROUTER_API_KEY=from-user\n", encoding="utf-8")
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("INFO"):
         assert llm.load_api_key() == "from-user"
     assert "no .env in the current folder" in caplog.text
 

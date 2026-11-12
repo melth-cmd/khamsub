@@ -66,9 +66,17 @@ def test_the_last_batch_has_no_eta():
 
 
 def test_the_spinner_moves_with_the_tick():
-    first = progress.render(pipeline.Progress(1, 9, 535, 1, 60, 10.0, 80.0), tick=0)
-    second = progress.render(pipeline.Progress(1, 9, 535, 1, 60, 10.0, 80.0), tick=1)
+    event = pipeline.Progress(1, 9, 535, 1, 60, 10.0, 80.0)
+    first = progress.render(event, tick=0)
+    second = progress.render(event, tick=progress.SPIN_EVERY)
     assert first[0] != second[0]
+
+
+def test_the_spinner_turns_slowly_not_on_every_redraw():
+    event = pipeline.Progress(1, 9, 535, 1, 60, 10.0, 80.0)
+    first = progress.render(event, tick=0)
+    next_tick = progress.render(event, tick=1)
+    assert first[0] == next_tick[0]
 
 
 # --- the reporter -----------------------------------------------------------
@@ -92,8 +100,10 @@ def test_a_terminal_redraws_one_line_instead_of_printing_many():
         bar.update(pipeline.Progress(1, 2, 10, 1, 5, 10.0, 10.0))
     text = stream.getvalue()
     assert "\r" in text
-    # One newline, for the opening line; the batches redraw in place.
-    assert text.count("\n") == 1
+    # The start line is live too, so nothing is kept and everything redraws.
+    assert text.count("\n") == 0
+    assert "translating 10 entries in 2 batches" in text
+    assert "batch 1/2" in text
 
 
 def test_a_live_reporter_clears_its_line_on_exit():
@@ -117,3 +127,13 @@ def test_verbose_forces_a_line_per_batch_even_on_a_terminal():
     bar.update(pipeline.Progress(1, 2, 10, 1, 5, 10.0, 10.0))
     assert "\n" in stream.getvalue()
     assert "\r" not in stream.getvalue()
+
+
+def test_a_live_start_shows_a_spinner_and_a_clock_immediately():
+    stream = FakeTTY()
+    bar = progress.Reporter(stream=stream, tick_s=999)
+    bar.update(pipeline.Progress(0, 2, 10))
+
+    text = stream.getvalue()
+    assert text.startswith("\r" + progress.SPINNER[0] + " translating 10 entries")
+    assert "0:00" in text

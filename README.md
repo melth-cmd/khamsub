@@ -27,7 +27,7 @@ Install it as a command, from git:
 `pipx install git+https://github.com/melth-cmd/khamsub` is equivalent. Then
 `khamsub` works from any folder, and `uv tool upgrade khamsub` (or
 `pipx upgrade khamsub`) updates it. A wheel is attached to each release if you
-prefer `pip install khamsub-0.4.0-py3-none-any.whl`.
+prefer `pip install` on the wheel attached to the release.
 
 From a clone, install the checkout itself:
 
@@ -75,8 +75,14 @@ writes a cache and a report (see "Files it makes"). A typical episode may take a
 few minutes.
 
 While it runs, one line shows the batch, a bar, the time spent and a rough
-estimate of what is left. It updates in place on a terminal; when the output is
-redirected, one line is printed per batch.
+estimate of what is left. A small spinner turns while a request is in flight,
+starting with the first batch, so a long request never looks hung. The line
+updates in place on a terminal; when the output is redirected, one line is
+printed per batch.
+
+Ctrl+C stops cleanly: the file is not written until the end, and every finished
+batch is already in the cache, so the same command resumes instead of paying
+for those batches again.
 
 At the end, the summary gives the tokens, the exact cost and, when the API says,
 who served the requests (`$0.0053 via DeepSeek`), so two runs of the same file
@@ -299,6 +305,8 @@ key here:
     1   a file failed with an error; the other files still ran
     2   a problem before any work: bad usage, bad config, missing file,
         missing English source, or an existing .bak without --force
+    130 interrupted with Ctrl+C; finished batches are cached, nothing was
+        half-written
 
 ## What is where
 

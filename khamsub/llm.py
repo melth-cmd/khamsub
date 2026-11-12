@@ -801,9 +801,9 @@ def load_api_key(
         key = read_env_file(path).get(key_env, "").strip()
         if key:
             if label == "user config":
-                log.warning(
-                    "no .env in the current folder; using %s", paths.short(path)
-                )
+                # The user-wide file is the documented normal path, not a
+                # problem; -v still shows which file the key came from.
+                log.info("no .env in the current folder; using %s", paths.short(path))
             return key
 
     existing = next((path for _, path in paths.env_candidates() if path.exists()), None)

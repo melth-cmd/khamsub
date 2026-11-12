@@ -917,13 +917,42 @@ def _repair_main(args) -> int:
     return status
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def _configure_logging(verbose: bool) -> None:
+    """Our own detail on stderr, without the HTTP library's request lines."""
     logging.basicConfig(
-        level=logging.INFO if args.verbose else logging.WARNING,
+        level=logging.INFO if verbose else logging.WARNING,
         format="%(message)s",
     )
+    # -v is about our batches, not one line per HTTP call and connection.
+    for name in ("httpx", "httpx2", "httpcore", "httpcore2", "openai"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
+
+def _interrupted(args: argparse.Namespace) -> int:
+    """A short goodbye for Ctrl+C; nothing was half-written."""
+    if args.repair:
+        message = "interrupted: nothing was written; run the same command again."
+    elif args.bible_only:
+        message = "interrupted: no bible was written; run the same command again."
+    else:
+        message = (
+            "interrupted: finished batches are cached; run the same command "
+            "again to resume."
+        )
+    print(message, file=sys.stderr)
+    return 130
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    _configure_logging(args.verbose)
+    try:
+        return _dispatch(args)
+    except KeyboardInterrupt:
+        return _interrupted(args)
+
+
+def _dispatch(args: argparse.Namespace) -> int:
     if args.source is not None and not args.repair:
         print("error: --source is only used with --repair", file=sys.stderr)
         return 2

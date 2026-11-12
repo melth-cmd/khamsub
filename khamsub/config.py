@@ -333,7 +333,8 @@ def load_settings(path: str | Path | None = None) -> Settings:
 
     if not explicit:
         if chosen_by == "user config":
-            log.warning(
+            # --init-config creates exactly this file; using it is normal.
+            log.info(
                 "no config.toml in the current folder; using %s",
                 paths.short(config_path),
             )

@@ -1243,3 +1243,46 @@ def test_a_clone_with_no_config_can_still_dry_run(monkeypatch, tmp_path, capsys)
     assert status == 0
     assert "3 entries in 1 batch" in capsys.readouterr().out
     assert config.load_settings().llm.model == config.DEFAULT_MODEL
+
+
+def test_ctrl_c_exits_quietly_with_130(project, fake, monkeypatch, capsys):
+    def interrupt(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(translate, "translate_one", interrupt)
+
+    status = translate.main(
+        [str(project / "sample.en.srt"), "--config", str(project / "config.toml")]
+    )
+
+    assert status == 130
+    err = capsys.readouterr().err
+    assert "interrupted" in err
+    assert "cached" in err
+    assert "Traceback" not in err
+
+
+def test_ctrl_c_during_repair_exits_with_130(monkeypatch, capsys):
+    def interrupt(args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(translate, "_repair_main", interrupt)
+
+    assert translate.main(["--repair", "movie.th.srt"]) == 130
+    err = capsys.readouterr().err
+    assert "interrupted" in err
+    assert "nothing was written" in err
+    assert "Traceback" not in err
+
+
+def test_verbose_logging_keeps_library_info_quiet():
+    import logging
+
+    names = ("httpx", "httpx2", "httpcore", "httpcore2", "openai")
+    saved = {name: logging.getLogger(name).level for name in names}
+    try:
+        translate._configure_logging(True)
+        assert all(logging.getLogger(name).level == logging.WARNING for name in names)
+    finally:
+        for name, level in saved.items():
+            logging.getLogger(name).setLevel(level)

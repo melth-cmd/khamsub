@@ -28,7 +28,10 @@ from . import pipeline
 TICK_S = 0.25
 
 BAR_WIDTH = 12
-SPINNER = "-\\|/"
+# A slow, visible turn. Redraws stay at TICK_S; the frame changes every
+# SPIN_EVERY ticks, so one full turn takes four seconds.
+SPINNER = "◐◓◑◒"
+SPIN_EVERY = 4
 
 # Escapes used to redraw one line without leaving a trail.
 RETURN = "\r"
@@ -65,17 +68,22 @@ def render(
     `elapsed_s` and `eta_s` override the event's own values so a live reporter
     can move the clock between batches.
     """
+    spin = SPINNER[(tick // SPIN_EVERY) % len(SPINNER)]
     if event.started:
         entries = "entry" if event.entries_total == 1 else "entries"
         batches = "batch" if event.batches_total == 1 else "batches"
-        return (
+        line = (
             f"translating {event.entries_total} {entries} in "
             f"{event.batches_total} {batches}"
         )
+        if elapsed_s is None:
+            return line
+        # A live reporter adds the spinner and the clock from the first second,
+        # so a long first batch does not look like a hung process.
+        return f"{spin} {line}  {clock(elapsed_s)}"
 
     spent = event.elapsed_s if elapsed_s is None else elapsed_s
     left = event.eta_s if eta_s is None else eta_s
-    spin = SPINNER[tick % len(SPINNER)]
     line = (
         f"{spin} {bar(event.batches_done, event.batches_total)} "
         f"batch {event.batches_done}/{event.batches_total}  "
@@ -143,12 +151,13 @@ class Reporter:
         with self._lock:
             self._event = event
             self._updated_at = time.monotonic()
-        if event.started or not self.live:
-            # The opening line is printed and kept: it is the only place the
-            # total number of batches is stated.
+        if not self.live:
+            # One line per batch: carriage returns in a log file are noise.
             self._write(render(event) + "\n")
-        else:
-            self._draw()
+            return
+        # Even the start event is a live line, so the spinner and clock are
+        # visible during the very first batch, not only after it returns.
+        self._draw()
 
     # --- internals ---------------------------------------------------------
 
@@ -162,8 +171,7 @@ class Reporter:
     def _draw(self) -> None:
         with self._lock:
             event = self._event
-            if event is None or event.started:
-                # The opening line is already on screen, with a newline after it.
+            if event is None:
                 return
             spent = event.elapsed_s + (time.monotonic() - self._updated_at)
             left = None

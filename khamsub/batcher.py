@@ -168,7 +168,9 @@ def make_batches(
         )
         batches.append(batch)
 
-    log.info(
+    # The caller rebuilds the batches every round to refresh context; one
+    # summary line is enough, and the progress line already states the totals.
+    log.debug(
         "Split %d entr%s into %d batch(es) of up to %d",
         len(positions),
         "y" if len(positions) == 1 else "ies",
