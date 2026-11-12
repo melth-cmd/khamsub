@@ -149,6 +149,9 @@ def _atomic_write(path: Path, data: bytes) -> None:
 # ".en." anywhere in the name marks the source language, e.g. Movie.en.srt,
 # Show.S01E01.en.hi_partial.srt.
 _EN_TOKEN_RE = re.compile(r"\.en\.", re.IGNORECASE)
+_TH_TOKEN_RE = re.compile(r"\.th\.", re.IGNORECASE)
+# The part after .en./.th. in the stem: "", "hi", "hi_partial", ...
+_LANGUAGE_RE = re.compile(r"\.(?:en|th)\.(?P<tail>.*)$", re.IGNORECASE)
 
 
 def _stem(source: Path) -> str:
@@ -194,6 +197,38 @@ def output_path_for(
         return source.with_name(replaced)
 
     return source.with_name(stem + suffix)
+
+
+def english_counterpart(source: str | Path) -> Path | None:
+    """The .en. name that mirrors a .th. name, or None without a .th. token.
+
+    Movie.th.srt            -> Movie.en.srt
+    Show.S01E01.th.hi.srt   -> Show.S01E01.en.hi.srt
+    Show.th.hi_partial.srt  -> Show.en.hi_partial.srt
+    Movie.srt               -> None
+    """
+    source = Path(source)
+    stem = _stem(source)
+    if not _TH_TOKEN_RE.search(stem + "."):
+        return None
+    replaced = _TH_TOKEN_RE.sub(".en.", stem + ".").rstrip(".")
+    trailing = source.suffix
+    if not replaced.lower().endswith(trailing.lower()):
+        replaced += trailing
+    return source.with_name(replaced)
+
+
+def language_tail(source: str | Path) -> str:
+    """What follows the .en./.th. token: "", "hi", "hi_partial", ...
+
+    Used to refuse a mixed HI/non-HI pair for --repair. A name without the
+    token counts as "" (non-HI).
+    """
+    stem = _stem(Path(source))
+    matches = list(_LANGUAGE_RE.finditer(stem + "."))
+    if not matches:
+        return ""
+    return matches[-1].group("tail").rstrip(".").lower()
 
 
 def write_srt(

@@ -18,7 +18,8 @@ never change.
 
 ```
 khamsub/
-├── translate.py       # CLI: flags, pre-flight, run summary, --dry-run
+├── translate.py       # CLI: flags, pre-flight, run summary; --repair, --where,
+│                      #   --init-config dispatch before config/key loading
 ├── config.py          # loads/validates config.toml (--config, folder, user dir);
 │                      #   --init-config writes the user files; builds the client
 ├── config.toml        # user settings (model, batch, prices fallback)
@@ -62,6 +63,12 @@ files instead of guessing.
 `repair.py` applies the safe text fixes and audits the result against the
 aligned English. It never writes a file and never calls a model; the CLI owns
 the backup and the write.
+
+One `--repair` run goes: `translate.py` validates the pair (only `.en.srt` <->
+`.th.srt` and `.en.hi.srt` <-> `.th.hi.srt` for now), `repair.repair_file` reads
+both and returns a `RepairResult`, then the CLI writes a temp, writes
+`FILE.repair-report.txt`, renames the original to `FILE.bak` and the temp to the
+original name. No config, key or client is touched.
 
 ## One run, in order
 

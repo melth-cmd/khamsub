@@ -195,3 +195,32 @@ def test_write_srt_roundtrip(tmp_path):
     assert [s.start for s in reloaded.subtitles] == [
         s.start for s in original.subtitles
     ]
+
+
+# --- --repair source names -------------------------------------------------
+
+
+def test_english_counterpart_maps_the_basic_pair():
+    assert srtio.english_counterpart("Movie.th.srt") == Path("Movie.en.srt")
+
+
+def test_english_counterpart_keeps_the_hi_and_partial_suffixes():
+    assert srtio.english_counterpart("Show.S01E01.th.hi.srt") == Path(
+        "Show.S01E01.en.hi.srt"
+    )
+    assert srtio.english_counterpart("Show.th.hi_partial.srt") == Path(
+        "Show.en.hi_partial.srt"
+    )
+
+
+def test_english_counterpart_needs_a_th_token():
+    assert srtio.english_counterpart("Movie.srt") is None
+
+
+def test_language_tail_distinguishes_hi_partial_and_plain():
+    assert srtio.language_tail("Movie.th.srt") == ""
+    assert srtio.language_tail("Movie.en.srt") == ""
+    assert srtio.language_tail("Movie.th.hi.srt") == "hi"
+    assert srtio.language_tail("Movie.en.hi.srt") == "hi"
+    assert srtio.language_tail("Movie.th.hi_partial.srt") == "hi_partial"
+    assert srtio.language_tail("Movie.srt") == ""

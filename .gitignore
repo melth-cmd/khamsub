@@ -13,6 +13,8 @@ venv/
 *.th.srt
 *.cache.json
 *.report.txt
+*.repair-report.txt
+*.bak
 *.bible.md
 *.glossary.md
 *.glossary.toml

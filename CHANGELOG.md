@@ -9,6 +9,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- `--repair` fixes an existing Thai `.srt` in place from the English file beside
+  it: encoding and line endings, whitespace, stray digit-only `{N}` placeholders,
+  one missing or orphan tag, and 3+ line cues reduced to two. It audits the
+  result against the aligned English for empty, truncated, English-left, mixed
+  script, glossary and timing problems, and writes `FILE.repair-report.txt`.
+  The original is kept as `FILE.bak` (an existing one needs `--force`), indexes
+  and timings never change, and no key or model is used. Only `.en.srt`/`.th.srt`
+  and `.en.hi.srt`/`.th.hi.srt` pairs are accepted for now; mixed HI/non-HI is
+  issue #21. `--source PATH` picks a different English file and `--dry-run`
+  writes nothing.
 - `--where` prints every config.toml and .env path a run would use, which one
   wins, and where the key would come from. It never prints the key.
 - `--init-config` writes `~/.config/khamsub/config.toml` and

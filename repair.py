@@ -67,6 +67,7 @@ CANDIDATE_KINDS = {
 _STRAY_PLACEHOLDER_RE = re.compile(r"\{\s*\d+\s*\}")
 _TAG_RE = re.compile(r"</?([ibu])>", re.IGNORECASE)
 _TAG_SPAN_RE = re.compile(r"<[^<>\n]*>")
+_THAI_RE = re.compile(r"[\u0e00-\u0e7f]")
 
 # A report for a 1,500-cue file does not need every timing overlap spelled out.
 MAX_PROBLEM_LINES = 40
@@ -108,6 +109,11 @@ class RepairResult:
     thai_count: int = 0
     english_count: int = 0
     skipped: int = 0
+
+
+def has_thai(text: str) -> bool:
+    """True when the text contains at least one Thai character."""
+    return bool(_THAI_RE.search(text))
 
 
 def repair_text(index: int, text: str) -> TextFix:
@@ -272,7 +278,7 @@ def repair_file(
     return result
 
 
-def render_report(result: RepairResult) -> str:
+def render_report(result: RepairResult, dry_run: bool = False) -> str:
     """A text report that separates what was fixed from what needs a human."""
     lines: list[str] = []
     thai_name = result.thai_path.name if result.thai_path else "Thai subtitles"
@@ -290,9 +296,13 @@ def render_report(result: RepairResult) -> str:
             lines.append(
                 f"Alignment: {alignment.reason} -- text checks only, no retranslation"
             )
-    lines.append("Mode: source-aware; text and layout only, timings untouched")
+    mode = "Mode: source-aware; text and layout only, timings untouched"
+    if dry_run:
+        mode += " (dry run; nothing written)"
+    lines.append(mode)
     lines.append("")
 
+    action = "Would repair" if dry_run else "Repaired"
     if result.changes:
         count = len(result.changes)
         cues = len(
@@ -301,12 +311,12 @@ def render_report(result: RepairResult) -> str:
         kinds = Counter(change.kind for change in result.changes)
         summary = ", ".join(f"{kind} {number}" for kind, number in sorted(kinds.items()))
         lines.append(
-            f"Repaired {_plural(count, 'change')} in {_plural(cues, 'cue')}: {summary}"
+            f"{action} {_plural(count, 'change')} in {_plural(cues, 'cue')}: {summary}"
         )
         for change in result.changes:
             lines.append(f"  {_where(change.index)} {change.kind}: {change.detail}")
     else:
-        lines.append("Repaired: nothing needed")
+        lines.append(f"{action}: nothing needed")
 
     lines.append("")
     if result.problems:

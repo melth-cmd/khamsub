@@ -117,6 +117,20 @@ can be compared.
       Create ~/.config/khamsub/config.toml and .env, then exit. Existing files
       are left untouched.
 
+    python translate.py --repair "Movie.th.srt"
+      Repair a downloaded Thai file in place from Movie.en.srt. The original is
+      kept as Movie.th.srt.bak and the repaired file keeps its name. Writes
+      Movie.th.repair-report.txt. No key or config needed.
+
+    python translate.py --repair "Movie.th.srt" --dry-run
+      Print the repair report; write and rename nothing.
+
+    python translate.py --repair "Movie.th.srt" --source Other.en.srt
+      Use a differently named English file.
+
+    python translate.py --repair "Movie.th.srt" --force
+      Overwrite an existing Movie.th.srt.bak.
+
     python translate.py "Show.en.srt" -v
       Add per-batch log detail. The progress line is shown either way.
 
@@ -140,6 +154,36 @@ For `Movie.en.srt` you get these next to it (the last two only with `--bible-onl
 
 The sidecar files drop the `.en.` part, so `Show.en.srt` gives `Show.report.txt`.
 A normal run reads the bible and glossary if they exist; it never creates them.
+
+`--repair` makes two other files next to the Thai one:
+
+    Movie.th.srt.bak            the original, kept before the repair
+    Movie.th.repair-report.txt  what was fixed and what needs a look
+
+## Repair a downloaded subtitle
+
+`--repair` is for an existing Thai file you did not get from this tool, or one
+you are not happy with. Put the English next to it as `Movie.en.srt` (or pass
+`--source`) and run:
+
+    python translate.py --repair "Movie.th.srt"
+
+It does two things: safe text fixes (encoding, spaces, stray `{N}`, one missing
+or orphan tag, 3+ lines reduced to 2) and a report of lines that look wrong
+(empty, truncated, English left in, mixed script, glossary, timing). Indexes and
+timestamps never change, and nothing is sent to a model.
+
+The original is kept as `Movie.th.srt.bak` and the repaired file replaces
+`Movie.th.srt`, so it is ready to watch. The report is
+`Movie.th.repair-report.txt`.
+
+Only same-kind pairs are accepted for now: `.en.srt` with `.th.srt`, and
+`.en.hi.srt` with `.th.hi.srt`. Mixed HI/non-HI pairs and `.hi_partial` are
+refused with a pointer to issue #21. `--dry-run` shows the report without
+touching anything; `--force` replaces an existing `.bak`.
+
+`--repair` never spends money. The report lists the lines strong enough to
+retranslate; that opt-in pass is a follow-up.
 
 ## Read the report
 
@@ -225,9 +269,11 @@ key here:
 
 ## Exit codes
 
-    0   finished (lines left in English are still exit 0: check the report)
+    0   finished (lines left in English are still exit 0: check the report;
+        --repair also exits 0 when it reports problems, because the file is written)
     1   a file failed with an error; the other files still ran
-    2   a problem before any work: bad usage, bad config, missing file
+    2   a problem before any work: bad usage, bad config, missing file,
+        missing English source, or an existing .bak without --force
 
 ## What is where
 

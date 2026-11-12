@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -27,6 +28,7 @@ import paths
 import pipeline
 import pricing
 import progress
+import repair
 import srtio
 import verify
 
@@ -40,7 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "files", nargs="*", metavar="FILE",
-        help="English .srt file(s); not needed with --where or --init-config",
+        help="English .srt file(s), or Thai files with --repair; not needed "
+        "with --where or --init-config",
     )
     parser.add_argument(
         "--config", metavar="PATH",
@@ -56,6 +59,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Create ~/.config/khamsub/config.toml and .env, then exit",
     )
     parser.add_argument(
+        "--repair", action="store_true",
+        help="Repair a Thai .srt in place from its English counterpart, keeping "
+        "FILE.bak; no API key needed",
+    )
+    parser.add_argument(
+        "--source", metavar="PATH",
+        help="English .srt for --repair (default: the .en. counterpart)",
+    )
+    parser.add_argument(
         "--output", metavar="PATH", help="Write here instead of FILE.th.srt (one file only)"
     )
     parser.add_argument(
@@ -67,7 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--dry-run", action="store_true",
-        help="Show batches, tokens and estimated cost without calling the API",
+        help="Show what would happen without calling the API: batches and cost "
+        "for a translation, the report for --repair (nothing written)",
     )
     parser.add_argument(
         "--bible-only", action="store_true",
@@ -87,7 +100,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force", action="store_true",
         help="Also accept inputs that look like existing translations (*.th.srt), "
-        "and rebuild bible/glossary files that already exist",
+        "rebuild bible/glossary files that already exist, and for --repair "
+        "overwrite an existing .bak",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show per-batch progress"
@@ -580,6 +594,162 @@ def _init_config() -> int:
     return 0
 
 
+def _repair_conflicts(args) -> list[str]:
+    """Translation-only flags that make no sense with --repair."""
+    conflicts: list[str] = []
+    for flag, value in (
+        ("--fix", args.fix),
+        ("--review", args.review),
+        ("--bible-only", args.bible_only),
+    ):
+        if value:
+            conflicts.append(flag)
+    for flag, value in (
+        ("--limit", args.limit),
+        ("--range", args.range_),
+        ("--output", args.output),
+        ("--config", args.config),
+    ):
+        if value is not None:
+            conflicts.append(flag)
+    return conflicts
+
+
+def _write_repair(thai: Path, result: repair.RepairResult, report: str) -> Path:
+    """Write the repaired file, report and .bak so the original is never lost."""
+    temp = thai.with_name(thai.name + ".repair-tmp")
+    backup = Path(str(thai) + ".bak")
+    report_path = thai.with_suffix(".repair-report.txt")
+    try:
+        srtio.write_srt(temp, result.subtitles, encoding="utf-8")
+        os.chmod(temp, thai.stat().st_mode)
+        srtio.write_text(report_path, report)
+        os.replace(thai, backup)
+        try:
+            os.replace(temp, thai)
+        except OSError:
+            os.replace(backup, thai)
+            raise
+    except OSError:
+        temp.unlink(missing_ok=True)
+        report_path.unlink(missing_ok=True)
+        raise
+    return report_path
+
+
+def _repair_main(args) -> int:
+    problems = _repair_conflicts(args)
+    if not args.files:
+        problems.append("at least one FILE is required with --repair")
+    if args.source is not None and len(args.files) > 1:
+        problems.append("--source can only be used with one input file")
+    if problems:
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 2
+
+    jobs: list[tuple[Path, Path]] = []
+    seen: set[Path] = set()
+    for name in args.files:
+        thai = Path(name)
+        if not thai.exists():
+            problems.append(f"{thai}: not found")
+            continue
+        if thai.is_dir():
+            problems.append(f"{thai}: is a directory")
+            continue
+        key = thai.resolve()
+        if key in seen:
+            problems.append(f"{thai}: listed twice")
+            continue
+        seen.add(key)
+
+        source = (
+            Path(args.source)
+            if args.source is not None
+            else srtio.english_counterpart(thai)
+        )
+        if source is None:
+            problems.append(
+                f"{thai.name}: no .en. counterpart in the name; pass --source PATH"
+            )
+            continue
+        if not source.exists():
+            problems.append(
+                f"{thai.name}: English source not found: {source}; pass --source PATH"
+            )
+            continue
+        if source.is_dir():
+            problems.append(f"{source}: English source is a directory")
+            continue
+        if source.resolve() == key:
+            problems.append(f"{thai.name}: source and input are the same file")
+            continue
+        thai_tail = srtio.language_tail(thai)
+        if thai_tail != srtio.language_tail(source) or thai_tail not in {"", "hi"}:
+            problems.append(
+                f"{thai.name} + {source.name}: only .en.srt/.th.srt and "
+                ".en.hi.srt/.th.hi.srt pairs are supported yet (see issue #21)"
+            )
+            continue
+
+        backup = Path(str(thai) + ".bak")
+        if backup.exists() and not args.force and not args.dry_run:
+            problems.append(
+                f"{backup.name}: backup already exists; pass --force to overwrite it"
+            )
+            continue
+
+        try:
+            loaded = srtio.load_srt(thai)
+        except Exception as exc:  # noqa: BLE001 - name the file, not a traceback
+            problems.append(f"{thai.name}: could not read it ({exc})")
+            continue
+        if not any(repair.has_thai(cue.content) for cue in loaded.subtitles):
+            if not args.force:
+                problems.append(
+                    f"{thai.name}: no Thai text found; pass --force if this is "
+                    "the right file"
+                )
+                continue
+
+        jobs.append((thai, source))
+
+    if problems:
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 2
+
+    status = 0
+    for position, (thai, source) in enumerate(jobs):
+        try:
+            result = repair.repair_file(thai, source)
+        except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest
+            print(f"error: {thai.name}: {exc}", file=sys.stderr)
+            status = 1
+            continue
+        report = repair.render_report(result, dry_run=args.dry_run)
+        if args.dry_run:
+            print(report, end="")
+            if position < len(jobs) - 1:
+                print()
+            continue
+        try:
+            report_path = _write_repair(thai, result, report)
+        except OSError as exc:
+            print(f"error: {thai.name}: {exc}", file=sys.stderr)
+            status = 1
+            continue
+        print(report, end="")
+        print(
+            f"{thai.name}: repaired; backup {Path(str(thai) + '.bak').name}, "
+            f"report {report_path.name}"
+        )
+        if position < len(jobs) - 1:
+            print()
+    return status
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -587,6 +757,15 @@ def main(argv: list[str] | None = None) -> int:
         format="%(message)s",
     )
 
+    if args.source is not None and not args.repair:
+        print("error: --source is only used with --repair", file=sys.stderr)
+        return 2
+    if args.repair and (args.where or args.init_config):
+        print(
+            "error: --repair cannot be combined with --where or --init-config",
+            file=sys.stderr,
+        )
+        return 2
     if args.where and args.init_config:
         print("error: use --where or --init-config, not both", file=sys.stderr)
         return 2
@@ -595,6 +774,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.init_config:
         return _init_config()
+    if args.repair:
+        return _repair_main(args)
     if not args.files:
         print("error: at least one FILE is required", file=sys.stderr)
         return 2

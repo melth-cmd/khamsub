@@ -260,3 +260,19 @@ def test_report_pluralises_one_change():
         thai_count=1,
     )
     assert "Repaired 1 change in 1 cue" in repair.render_report(result)
+
+
+def test_has_thai_needs_a_thai_character():
+    assert repair.has_thai("สวัสดี")
+    assert not repair.has_thai("Hello there.")
+    assert repair.has_thai("Hello สวัสดี")
+
+
+def test_dry_run_report_uses_the_conditional_wording():
+    result = repair.RepairResult(
+        changes=[repair.Change(1, "whitespace", "trimmed")],
+        thai_count=1,
+    )
+    text = repair.render_report(result, dry_run=True)
+    assert "Would repair 1 change in 1 cue" in text
+    assert "dry run; nothing written" in text
