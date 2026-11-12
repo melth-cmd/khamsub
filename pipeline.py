@@ -456,6 +456,7 @@ def estimate(
     context_after: int = 2,
     limit: int | None = None,
     range_: str | tuple[int, int] | None = None,
+    indexes: Collection[int] | None = None,
     bible: str = "",
     terms: Sequence[glossary.Term] = (),
     input_usd_per_mtok: float = 0.0,
@@ -467,7 +468,9 @@ def estimate(
     counted once per batch, exactly as translate_subtitles sends them.
     """
     prepared = prepare(subtitles, strip_hi=strip_hi)
-    selected = batcher.select_range(prepared.entries, limit=limit, range_=range_)
+    selected = batcher.select_range(
+        prepared.entries, limit=limit, range_=range_, indexes=indexes
+    )
     batches = batcher.make_batches(
         prepared.entries,
         selection=selected,

@@ -276,3 +276,28 @@ def test_dry_run_report_uses_the_conditional_wording():
     text = repair.render_report(result, dry_run=True)
     assert "Would repair 1 change in 1 cue" in text
     assert "dry run; nothing written" in text
+
+
+def test_refresh_audit_recomputes_text_problems():
+    english = [cue(1, 0, 2, "Hello.")]
+    thai = [cue(1, 0, 2, "Hello.")]
+    result = repair.repair_subtitles(thai, english)
+    assert result.candidates == [1]
+
+    result.subtitles = [cue(1, 0, 2, "สวัสดี")]
+    repair.refresh_audit(result)
+
+    assert result.candidates == []
+    assert not any(problem.kind == "english_left" for problem in result.problems)
+
+
+def test_report_names_a_retranslation():
+    from llm import Usage
+
+    result = repair.RepairResult(
+        retranslated=[2],
+        retranslate_usage=Usage(10, 5),
+        thai_count=2,
+    )
+    text = repair.render_report(result)
+    assert "Retranslated 1 cue (15 tokens)" in text

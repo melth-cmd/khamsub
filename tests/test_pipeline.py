@@ -1001,3 +1001,12 @@ def test_pipeline_counts_each_provider_across_batches():
     )
     result = run(client, [subtitle(1, "One."), subtitle(2, "Two.")], size=1)
     assert result.providers == {"DeepInfra": 1, "DeepSeek": 1}
+
+
+def test_estimate_honours_indexes_for_a_retranslate():
+    loaded = srtio.load_srt(FIXTURES / "simple.srt")
+    full = pipeline.estimate(loaded.subtitles)
+    one = pipeline.estimate(loaded.subtitles, indexes=[2])
+    assert one.entries == 1
+    assert one.batches == 1
+    assert one.completion_tokens < full.completion_tokens

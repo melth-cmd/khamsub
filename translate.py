@@ -21,6 +21,7 @@ from pathlib import Path
 
 import batcher
 import bible
+import cache as cache_module
 import config as config_module
 import glossary
 import llm
@@ -29,6 +30,7 @@ import pipeline
 import pricing
 import progress
 import repair
+import srt
 import srtio
 import verify
 
@@ -66,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source", metavar="PATH",
         help="English .srt for --repair (default: the .en. counterpart)",
+    )
+    parser.add_argument(
+        "--retranslate", action="store_true",
+        help="With --repair: re-translate the lines the report calls candidates "
+        "(costs money; use --dry-run first)",
     )
     parser.add_argument(
         "--output", metavar="PATH", help="Write here instead of FILE.th.srt (one file only)"
@@ -637,6 +644,121 @@ def _write_repair(thai: Path, result: repair.RepairResult, report: str) -> Path:
     return report_path
 
 
+def _pseudo_subtitles(result: repair.RepairResult) -> list[srt.Subtitle]:
+    """The aligned English line for each Thai cue, in the Thai cue's timing."""
+    return [
+        srt.Subtitle(
+            index=cue.index,
+            start=cue.start,
+            end=cue.end,
+            content=result.sources.get(cue.index, cue.content),
+            proprietary=getattr(cue, "proprietary", ""),
+        )
+        for cue in result.subtitles
+    ]
+
+
+def _cache_for(
+    source: Path, settings: config_module.Settings, notes: bible.Notes
+) -> cache_module.Cache:
+    """The cache beside the English source, with its glossary/bible key."""
+
+    def notes_key(index: int, text: str) -> str:
+        return glossary.fingerprint(glossary.matching(notes.terms, text), notes.bible)
+
+    return cache_module.Cache(
+        srtio.sidecar_path(source, ".cache.json"),
+        model=settings.llm.model,
+        glossary=notes_key,
+    ).load()
+
+
+def _retranslate_result(
+    client: llm.ChatClient,
+    result: repair.RepairResult,
+    source: Path,
+    settings: config_module.Settings,
+    notes: bible.Notes,
+) -> None:
+    """Re-translate only the candidate cues, then refresh the audit."""
+    translated = pipeline.translate_subtitles(
+        client,
+        _pseudo_subtitles(result),
+        strip_hi=False,
+        size=settings.batch.size,
+        context_before=settings.batch.context_before,
+        context_after=settings.batch.context_after,
+        bible=notes.bible,
+        terms=notes.terms,
+        cache=_cache_for(source, settings, notes),
+        indexes=result.candidates,
+        # The existing Thai came from somewhere else; its cached text is not
+        # evidence that the line is good, so the candidate is requested again.
+        ignore_cache=True,
+        seed={cue.index: cue.content for cue in result.subtitles},
+        strict=True,
+    )
+
+    by_index = {entry.index: entry for entry in translated.results if entry.ok}
+    updated = []
+    for cue in result.subtitles:
+        entry = by_index.get(cue.index)
+        if entry is None:
+            updated.append(cue)
+            continue
+        fix = repair.repair_text(cue.index, entry.text)
+        result.changes.extend(fix.changes)
+        result.problems.extend(fix.problems)
+        updated.append(
+            srt.Subtitle(
+                index=cue.index,
+                start=cue.start,
+                end=cue.end,
+                content=fix.text,
+                proprietary=getattr(cue, "proprietary", ""),
+            )
+        )
+
+    result.subtitles = updated
+    result.retranslated = sorted(by_index)
+    result.retranslate_failed = sorted(
+        entry.index for entry in translated.results if not entry.ok
+    )
+    result.retranslate_usage = result.retranslate_usage + translated.usage
+    result.retranslate_providers.update(translated.providers)
+    repair.refresh_audit(result, notes.terms)
+
+
+def _print_retranslate_estimate(
+    result: repair.RepairResult,
+    settings: config_module.Settings,
+    notes: bible.Notes,
+) -> None:
+    """The count and cost of the candidate pass, without calling the API."""
+    price = pricing.fetch_price(settings.llm.model, settings.llm.base_url)
+    if price is None:
+        price = (
+            settings.llm.input_usd_per_mtok,
+            settings.llm.output_usd_per_mtok,
+        )
+    estimate = pipeline.estimate(
+        _pseudo_subtitles(result),
+        size=settings.batch.size,
+        context_before=settings.batch.context_before,
+        context_after=settings.batch.context_after,
+        indexes=result.candidates,
+        bible=notes.bible,
+        terms=notes.terms,
+        input_usd_per_mtok=price[0],
+        output_usd_per_mtok=price[1],
+    )
+    print(
+        f"Retranslation estimate: {estimate.entries} candidate(s) in "
+        f"{estimate.batches} batch(es)"
+    )
+    _print_estimate(estimate, price[0], price[1])
+
+
 def _repair_main(args) -> int:
     problems = _repair_conflicts(args)
     if not args.files:
@@ -720,18 +842,59 @@ def _repair_main(args) -> int:
             print(f"error: {problem}", file=sys.stderr)
         return 2
 
-    status = 0
-    for position, (thai, source) in enumerate(jobs):
+    prepared: list[tuple[Path, Path, bible.Notes, repair.RepairResult]] = []
+    for thai, source in jobs:
         try:
-            result = repair.repair_file(thai, source)
-        except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest
-            print(f"error: {thai.name}: {exc}", file=sys.stderr)
-            status = 1
+            notes = bible.load_notes(source)
+            result = repair.repair_file(thai, source, terms=notes.terms)
+        except Exception as exc:  # noqa: BLE001 - name the file, not a traceback
+            problems.append(f"{thai.name}: {exc}")
             continue
+        prepared.append((thai, source, notes, result))
+
+    if problems:
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 2
+
+    settings = None
+    if args.retranslate and any(result.candidates for *_, result in prepared):
+        try:
+            settings = config_module.load_settings()
+        except config_module.ConfigError as exc:
+            print(f"config error: {exc}", file=sys.stderr)
+            return 2
+        if not settings.llm.model:
+            print(
+                "config error: [llm] model is empty; run `khamsub --init-config` "
+                "or set it in config.toml",
+                file=sys.stderr,
+            )
+            return 2
+
+        if not args.dry_run:
+            try:
+                client = config_module.build_client(settings)
+            except (config_module.ConfigError, llm.LLMError) as exc:
+                print(f"config error: {exc}", file=sys.stderr)
+                return 2
+            for thai, source, notes, result in prepared:
+                if not result.candidates:
+                    continue
+                try:
+                    _retranslate_result(client, result, source, settings, notes)
+                except Exception as exc:  # noqa: BLE001 - a failed call, not a crash
+                    print(f"error: {thai.name}: {exc}", file=sys.stderr)
+                    return 1
+
+    status = 0
+    for position, (thai, source, notes, result) in enumerate(prepared):
         report = repair.render_report(result, dry_run=args.dry_run)
         if args.dry_run:
             print(report, end="")
-            if position < len(jobs) - 1:
+            if args.retranslate and result.candidates and settings is not None:
+                _print_retranslate_estimate(result, settings, notes)
+            if position < len(prepared) - 1:
                 print()
             continue
         try:
@@ -745,7 +908,7 @@ def _repair_main(args) -> int:
             f"{thai.name}: repaired; backup {Path(str(thai) + '.bak').name}, "
             f"report {report_path.name}"
         )
-        if position < len(jobs) - 1:
+        if position < len(prepared) - 1:
             print()
     return status
 
@@ -759,6 +922,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.source is not None and not args.repair:
         print("error: --source is only used with --repair", file=sys.stderr)
+        return 2
+    if args.retranslate and not args.repair:
+        print("error: --retranslate is only used with --repair", file=sys.stderr)
         return 2
     if args.repair and (args.where or args.init_config):
         print(

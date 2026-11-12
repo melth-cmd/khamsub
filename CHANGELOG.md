@@ -19,6 +19,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   and `.en.hi.srt`/`.th.hi.srt` pairs are accepted for now; mixed HI/non-HI is
   issue #21. `--source PATH` picks a different English file and `--dry-run`
   writes nothing.
+- `--repair --retranslate` rewrites only the report's candidate lines (empty,
+  truncated, English left in, mixed script, glossary) using the aligned English,
+  the cache beside the English file, and its glossary/bible. `--dry-run` prints
+  the candidate count and the token/cost estimate without a request. Cues with
+  no confident English line are never rewritten, and a run with no candidates
+  needs no key or config.
 - `--where` prints every config.toml and .env path a run would use, which one
   wins, and where the key would come from. It never prints the key.
 - `--init-config` writes `~/.config/khamsub/config.toml` and

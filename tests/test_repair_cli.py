@@ -9,8 +9,10 @@ import pytest
 import srt
 
 import config
+import llm
 import srtio
 import translate
+from conftest import FakeClient
 
 
 def repair_pair(
@@ -244,3 +246,111 @@ def test_repair_dry_run_works_with_an_existing_backup(tmp_path):
     thai, _ = repair_pair(tmp_path)
     Path(str(thai) + ".bak").write_text("old", encoding="utf-8")
     assert translate.main(["--repair", str(thai), "--dry-run"]) == 0
+
+
+# --- --retranslate -----------------------------------------------------------
+
+
+def two_cue_pair(tmp_path: Path, thai_second: str = "Hello.") -> tuple[Path, Path]:
+    thai = tmp_path / "movie.th.srt"
+    source = tmp_path / "movie.en.srt"
+    one, two = dt.timedelta(seconds=1), dt.timedelta(seconds=2)
+    three, four = dt.timedelta(seconds=3), dt.timedelta(seconds=4)
+    srtio.write_srt(
+        thai,
+        [
+            srt.Subtitle(index=1, start=one, end=two, content="สวัสดี"),
+            srt.Subtitle(index=2, start=three, end=four, content=thai_second),
+        ],
+    )
+    srtio.write_srt(
+        source,
+        [
+            srt.Subtitle(index=1, start=one, end=two, content="Hello."),
+            srt.Subtitle(index=2, start=three, end=four, content="Hello."),
+        ],
+    )
+    return thai, source
+
+
+def make_settings():
+    return config.settings_from_dict({"llm": {"model": "test/model"}})
+
+
+def test_retranslate_rewrites_candidates_and_reports(tmp_path, monkeypatch, capsys):
+    thai, _ = two_cue_pair(tmp_path)
+    client = FakeClient([llm.Completion("[2] สวัสดีครับ", llm.Usage(10, 5))])
+    monkeypatch.setattr(config, "load_settings", lambda: make_settings())
+    monkeypatch.setattr(config, "build_client", lambda settings, api_key=None: client)
+
+    status = translate.main(["--repair", str(thai), "--retranslate"])
+
+    assert status == 0
+    loaded = srtio.load_srt(thai)
+    assert [sub.content for sub in loaded.subtitles] == ["สวัสดี", "สวัสดีครับ"]
+    out = capsys.readouterr().out
+    assert "Retranslated 1 cue (15 tokens)" in out
+    assert "Retranslation candidates: none" in out
+    assert (tmp_path / "movie.cache.json").exists()
+    assert Path(str(thai) + ".bak").exists()
+    assert client.call_count == 1
+
+
+def test_retranslate_dry_run_estimates_without_a_client(
+    tmp_path, monkeypatch, capsys
+):
+    thai, _ = two_cue_pair(tmp_path)
+    monkeypatch.setattr(config, "load_settings", lambda: make_settings())
+
+    def boom(*args, **kwargs):
+        raise AssertionError("a dry run must not build a client")
+
+    monkeypatch.setattr(config, "build_client", boom)
+
+    status = translate.main(["--repair", str(thai), "--retranslate", "--dry-run"])
+
+    assert status == 0
+    out = capsys.readouterr().out
+    assert "Retranslation estimate:" in out
+    assert "candidate(s)" in out
+    assert not Path(str(thai) + ".bak").exists()
+    assert not thai.with_suffix(".repair-report.txt").exists()
+
+
+def test_retranslate_with_no_candidates_needs_no_config(tmp_path, monkeypatch):
+    thai, _ = repair_pair(tmp_path)
+
+    def boom(*args, **kwargs):
+        raise AssertionError("nothing to retranslate, so no config is needed")
+
+    monkeypatch.setattr(config, "load_settings", boom)
+    monkeypatch.setattr(config, "build_client", boom)
+
+    assert translate.main(["--repair", str(thai), "--retranslate"]) == 0
+
+
+def test_retranslate_without_repair_is_refused(tmp_path, capsys):
+    thai, _ = repair_pair(tmp_path)
+    status = translate.main(["--retranslate", str(thai)])
+    assert status == 2
+    assert "--repair" in capsys.readouterr().err
+
+
+def test_retranslate_without_a_key_stops_before_writing(
+    tmp_path, monkeypatch, capsys
+):
+    thai, _ = two_cue_pair(tmp_path)
+    original = thai.read_bytes()
+    monkeypatch.setattr(config, "load_settings", lambda: make_settings())
+
+    def no_key(*args, **kwargs):
+        raise llm.AuthError("no key")
+
+    monkeypatch.setattr(config, "build_client", no_key)
+
+    status = translate.main(["--repair", str(thai), "--retranslate"])
+
+    assert status == 2
+    assert "no key" in capsys.readouterr().err
+    assert thai.read_bytes() == original
+    assert not Path(str(thai) + ".bak").exists()

@@ -131,6 +131,10 @@ can be compared.
     python translate.py --repair "Movie.th.srt" --force
       Overwrite an existing Movie.th.srt.bak.
 
+    python translate.py --repair "Movie.th.srt" --retranslate
+      Re-translate only the report's candidate lines. Costs money; run the same
+      command with --dry-run first to see the estimate.
+
     python translate.py "Show.en.srt" -v
       Add per-batch log detail. The progress line is shown either way.
 
@@ -171,7 +175,7 @@ you are not happy with. Put the English next to it as `Movie.en.srt` (or pass
 It does two things: safe text fixes (encoding, spaces, stray `{N}`, one missing
 or orphan tag, 3+ lines reduced to 2) and a report of lines that look wrong
 (empty, truncated, English left in, mixed script, glossary, timing). Indexes and
-timestamps never change, and nothing is sent to a model.
+timestamps never change, and the free run sends nothing to a model.
 
 The original is kept as `Movie.th.srt.bak` and the repaired file replaces
 `Movie.th.srt`, so it is ready to watch. The report is
@@ -182,8 +186,19 @@ Only same-kind pairs are accepted for now: `.en.srt` with `.th.srt`, and
 refused with a pointer to issue #21. `--dry-run` shows the report without
 touching anything; `--force` replaces an existing `.bak`.
 
-`--repair` never spends money. The report lists the lines strong enough to
-retranslate; that opt-in pass is a follow-up.
+`--repair` on its own never spends money. The report lists the lines strong
+enough to retranslate (empty, truncated, English left in, mixed script,
+glossary). To rewrite only those:
+
+    python translate.py --repair "Movie.th.srt" --retranslate --dry-run
+      Show the candidate count and the estimated cost; no request.
+
+    python translate.py --repair "Movie.th.srt" --retranslate
+      Rewrite the candidates, then write the file and report as usual.
+
+That pass uses the aligned English, the cache beside the English file, and its
+glossary/bible. Cues with no confident English line are never rewritten. If
+there are no candidates, no key or config is needed.
 
 ## Read the report
 

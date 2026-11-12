@@ -109,6 +109,11 @@ class RepairResult:
     thai_count: int = 0
     english_count: int = 0
     skipped: int = 0
+    # The --retranslate pass: what it rewrote, what it could not, and the cost.
+    retranslated: list[int] = field(default_factory=list)
+    retranslate_failed: list[int] = field(default_factory=list)
+    retranslate_usage: llm.Usage = field(default_factory=llm.Usage)
+    retranslate_providers: Counter[str] = field(default_factory=Counter)
 
 
 def has_thai(text: str) -> bool:
@@ -196,26 +201,10 @@ def repair_subtitles(
         problems.extend(fix.problems)
 
     tag_problem_indexes = {p.index for p in problems if p.kind == "tags"}
-    candidates: set[int] = set()
-    for cue in repaired:
-        # A poor alignment is not evidence: use the source-free checks only.
-        source = sources.get(cue.index) if alignment.ok else None
-        if source is not None:
-            flags = verify.check_entry(cue.index, source, cue.content, terms)
-        elif llm.is_non_verbal(cue.content):
-            flags = []
-        else:
-            flags = verify.check_text(cue.index, cue.content, terms)
-
-        for flag in flags:
-            if flag.kind not in REPORT_KINDS:
-                continue
-            if flag.kind == "tag_mismatch" and cue.index in tag_problem_indexes:
-                continue
-            problems.append(Problem(cue.index, flag.kind, flag.message))
-        if alignment.ok and any(flag.kind in CANDIDATE_KINDS for flag in flags):
-            candidates.add(cue.index)
-
+    text_problems, candidates = _text_audit(
+        repaired, sources, alignment, terms, tag_problem_indexes
+    )
+    problems.extend(text_problems)
     problems.extend(_timing_problems(repaired))
 
     if not alignment.ok:
@@ -234,17 +223,84 @@ def repair_subtitles(
     if dashes is not None:
         problems.append(dashes)
 
-    problems.sort(key=lambda problem: (problem.index is None, problem.index or 0, problem.kind))
-
+    _sort_problems(problems)
     return RepairResult(
         subtitles=repaired,
         changes=changes,
         problems=problems,
-        candidates=sorted(candidates),
+        candidates=candidates,
         alignment=alignment,
         sources=sources,
         thai_count=len(thai),
         english_count=len(english),
+    )
+
+
+def _text_audit(
+    cues: Sequence,
+    sources: dict[int, str],
+    alignment: align.Alignment,
+    terms: Sequence[glossary.Term],
+    tag_problem_indexes: set[int],
+) -> tuple[list[Problem], list[int]]:
+    """The source-aware text flags, and the cues strong enough to retranslate."""
+    problems: list[Problem] = []
+    candidates: set[int] = set()
+    for cue in cues:
+        # A poor alignment is not evidence: use the source-free checks only.
+        source = sources.get(cue.index) if alignment.ok else None
+        if source is not None:
+            flags = verify.check_entry(cue.index, source, cue.content, terms)
+        elif llm.is_non_verbal(cue.content):
+            flags = []
+        else:
+            flags = verify.check_text(cue.index, cue.content, terms)
+
+        for flag in flags:
+            if flag.kind not in REPORT_KINDS:
+                continue
+            if flag.kind == "tag_mismatch" and cue.index in tag_problem_indexes:
+                continue
+            problems.append(Problem(cue.index, flag.kind, flag.message))
+        if alignment.ok and any(flag.kind in CANDIDATE_KINDS for flag in flags):
+            candidates.add(cue.index)
+    return problems, sorted(candidates)
+
+
+def refresh_audit(
+    result: RepairResult, terms: Sequence[glossary.Term] = ()
+) -> RepairResult:
+    """Re-run the text audit after a retranslation, keeping the other problems.
+
+    Timing, alignment, no_source, ambiguous, dashes, tags and long_cue do not
+    change when text is replaced, so they stay. Every text flag is recomputed
+    and the candidate list is rebuilt.
+    """
+    tag_problem_indexes = {p.index for p in result.problems if p.kind == "tags"}
+    text_problems, candidates = _text_audit(
+        result.subtitles,
+        result.sources,
+        result.alignment,
+        terms,
+        tag_problem_indexes,
+    )
+    keep = [
+        problem
+        for problem in result.problems
+        if problem.kind not in REPORT_KINDS and problem.kind != "dashes"
+    ]
+    result.problems = keep + text_problems
+    dashes = _dash_problem(result.subtitles)
+    if dashes is not None:
+        result.problems.append(dashes)
+    _sort_problems(result.problems)
+    result.candidates = candidates
+    return result
+
+
+def _sort_problems(problems: list[Problem]) -> None:
+    problems.sort(
+        key=lambda problem: (problem.index is None, problem.index or 0, problem.kind)
     )
 
 
@@ -336,6 +392,23 @@ def render_report(result: RepairResult, dry_run: bool = False) -> str:
         lines.append("Needs a look: nothing")
 
     lines.append("")
+    if result.retranslated or result.retranslate_failed:
+        if result.retranslated:
+            usage = result.retranslate_usage
+            tokens = usage.prompt_tokens + usage.completion_tokens
+            detail = f"{tokens:,} tokens"
+            if usage.cost_usd is not None:
+                detail += f", ${usage.cost_usd:.4f}"
+            lines.append(
+                f"Retranslated {_plural(len(result.retranslated), 'cue')} ({detail})"
+            )
+        if result.retranslate_failed:
+            lines.append(
+                f"Retranslation failed for "
+                f"{_plural(len(result.retranslate_failed), 'cue')}; "
+                "the earlier text was kept"
+            )
+        lines.append("")
     if not result.alignment.ok:
         lines.append("Retranslation: disabled (alignment is poor)")
     elif result.candidates:

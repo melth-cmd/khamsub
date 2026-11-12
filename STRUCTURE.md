@@ -70,6 +70,11 @@ both and returns a `RepairResult`, then the CLI writes a temp, writes
 `FILE.repair-report.txt`, renames the original to `FILE.bak` and the temp to the
 original name. No config, key or client is touched.
 
+With `--retranslate`, only the candidate cues go through
+`pipeline.translate_subtitles` with the cache/glossary/bible beside the English
+file; the text is spliced back, `repair.refresh_audit` recomputes the flags, and
+then the same write happens. `--dry-run` stops at the estimate.
+
 ## One run, in order
 
 This is the mental model to use when the change you want is not in the table
