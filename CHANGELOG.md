@@ -9,14 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [0.4.1] - 2026-11-12
 
-## [0.4.0] - 2026-11-12
-
 ### Added
 
 - A slowly turning spinner on the live progress line. It starts with the first
   batch (previously the line only moved after the first batch returned), so a
   long request never looks like a hung process.
-- `--version` prints the package version.
 
 ### Fixed
 
@@ -30,6 +27,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Using the user-wide config and `.env` no longer prints a warning on every
   run. Only falling back to the built-in defaults does, because that is the
   case where the model is only an example.
+
+## [0.4.0] - 2026-11-12
+
+### Added
+
+- `--version` prints the package version.
 
 ### Changed
 
