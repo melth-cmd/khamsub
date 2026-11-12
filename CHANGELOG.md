@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-12
+
 ### Added
 
 - `--repair` fixes an existing Thai `.srt` in place from the English file beside
@@ -166,7 +168,8 @@ First public release.
 - Any OpenAI-compatible provider through `[llm]`.
 - API key from the environment only; exit codes 0, 1 and 2.
 
-[Unreleased]: https://github.com/melth-cmd/khamsub/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/melth-cmd/khamsub/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/melth-cmd/khamsub/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/melth-cmd/khamsub/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/melth-cmd/khamsub/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/melth-cmd/khamsub/releases/tag/v0.1.0
