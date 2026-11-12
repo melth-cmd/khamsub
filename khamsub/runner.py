@@ -21,9 +21,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable, Mapping, Protocol, Sequence
 
-import llm
-from batcher import Batch, SourceEntry
-from llm import Completion, Issue, Usage
+from . import llm
+from .batcher import Batch, SourceEntry
+from .llm import Completion, Issue, Usage
 
 log = logging.getLogger(__name__)
 

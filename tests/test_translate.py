@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-import bible
-import config
-import glossary
-import paths
-import srtio
-import translate
-import verify
+from khamsub import bible
+from khamsub import config
+from khamsub import glossary
+from khamsub import paths
+from khamsub import srtio
+from khamsub import translate
+from khamsub import verify
 from conftest import FakeClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -273,7 +273,7 @@ def test_single_file_gets_no_header_or_total(project, fake, capsys):
 
 
 def test_a_crashed_file_does_not_stop_the_rest(project, fake, capsys):
-    import llm
+    from khamsub import llm
 
     fake.queue(llm.LLMError("gateway exploded")).queue(REPLIES)
     status = run(project, fake, copy(project, "a.en.srt"), copy(project, "b.en.srt"))
@@ -429,7 +429,7 @@ def test_dry_run_needs_no_key_and_builds_no_client(project, monkeypatch, capsys)
     assert status == 0
     assert "3 entries in 1 batch" in out  # default size 60 fits the whole file
     assert "tokens" in out
-    assert "cost unknown" in out  # no prices in the test config
+    assert "cost unknown" not in out  # built-in prices fill the gap
 
 
 # --- story bible pre-pass (step 15) -----------------------------------------
@@ -1048,7 +1048,7 @@ def test_fix_and_review_fix_then_advise(project, fake):
 
 
 def test_a_dry_run_uses_the_published_price(project, monkeypatch, capsys):
-    monkeypatch.setattr("pricing.fetch_price", lambda *a, **k: (0.15, 0.60))
+    monkeypatch.setattr("khamsub.pricing.fetch_price", lambda *a, **k: (0.15, 0.60))
     status = translate.main(
         [
             str(project / "sample.en.srt"),
@@ -1083,7 +1083,7 @@ def test_a_dry_run_falls_back_to_the_configured_price(project, capsys):
 
 
 def test_the_summary_splits_the_tokens(project, fake, capsys):
-    from llm import Completion, Usage
+    from khamsub.llm import Completion, Usage
 
     fake.queue(
         Completion(
@@ -1103,7 +1103,7 @@ def test_the_summary_splits_the_tokens(project, fake, capsys):
 
 
 def test_the_summary_names_the_provider(project, fake, capsys):
-    from llm import Completion
+    from khamsub.llm import Completion
 
     fake.queue(Completion(text=REPLIES, provider="DeepSeek"))
     run(project, fake, copy(project, "sample.en.srt"))
@@ -1111,7 +1111,7 @@ def test_the_summary_names_the_provider(project, fake, capsys):
 
 
 def test_a_mixed_run_lists_each_provider_in_the_total(project, fake, capsys):
-    from llm import Completion
+    from khamsub.llm import Completion
 
     fake.queue(Completion(text=REPLIES, provider="DeepInfra"))
     fake.queue(Completion(text=REPLIES, provider="DeepSeek"))
@@ -1231,3 +1231,15 @@ def test_where_says_to_edit_an_existing_empty_env(tmp_path, monkeypatch, capsys)
     assert translate.main(["--where"]) == 0
     out = capsys.readouterr().out
     assert "not set (edit " in out
+
+
+def test_a_clone_with_no_config_can_still_dry_run(monkeypatch, tmp_path, capsys):
+    """The built-in default model is a real one, so packaging needs no config."""
+    monkeypatch.chdir(tmp_path)
+    shutil.copy(FIXTURES / "simple.srt", tmp_path / "sample.en.srt")
+
+    status = translate.main(["sample.en.srt", "--dry-run"])
+
+    assert status == 0
+    assert "3 entries in 1 batch" in capsys.readouterr().out
+    assert config.load_settings().llm.model == config.DEFAULT_MODEL

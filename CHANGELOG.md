@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-12
+
+### Added
+
+- `--version` prints the package version.
+
+### Changed
+
+- KhamSub installs as a command: `uv tool install git+https://github.com/melth-cmd/khamsub`,
+  `pipx install ...`, a wheel from the release, or `pip install .` from a clone.
+  `python -m khamsub` works too. The modules now live in the `khamsub/` package;
+  the root `translate.py` stays as a small shim, so old commands still run.
+- Dependencies and metadata live in `pyproject.toml`; `requirements.txt` is gone.
+- The config template is package data copied by `--init-config`. The built-in
+  defaults now include the example model and fallback prices, so a fresh install
+  needs no config file to run (the key is still required for a real translation).
+  A `./config.toml` in the folder you run from still overrides the user file.
+- Usage text says `khamsub` instead of `translate.py`.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
@@ -168,7 +187,8 @@ First public release.
 - Any OpenAI-compatible provider through `[llm]`.
 - API key from the environment only; exit codes 0, 1 and 2.
 
-[Unreleased]: https://github.com/melth-cmd/khamsub/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/melth-cmd/khamsub/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/melth-cmd/khamsub/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/melth-cmd/khamsub/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/melth-cmd/khamsub/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/melth-cmd/khamsub/compare/v0.1.0...v0.2.0

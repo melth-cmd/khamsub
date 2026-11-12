@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-import llm
-import runner
-from batcher import Batch, ContextLine, SourceEntry, make_batches
+from khamsub import llm
+from khamsub import runner
+from khamsub.batcher import Batch, ContextLine, SourceEntry, make_batches
 
 
 def batch_of(pairs: list[tuple[int, str]], **kwargs) -> Batch:

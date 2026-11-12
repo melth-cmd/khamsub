@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import srt
 
-import srtio
+from khamsub import srtio
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

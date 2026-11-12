@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 import srt
 
-import config
-import llm
-import srtio
-import translate
+from khamsub import config
+from khamsub import llm
+from khamsub import srtio
+from khamsub import translate
 from conftest import FakeClient
 
 

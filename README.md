@@ -20,45 +20,55 @@ AI model (OpenRouter by default).
 
 Requires Python 3.11+.
 
+Install it as a command, from git:
+
+    uv tool install git+https://github.com/melth-cmd/khamsub
+
+`pipx install git+https://github.com/melth-cmd/khamsub` is equivalent. Then
+`khamsub` works from any folder, and `uv tool upgrade khamsub` (or
+`pipx upgrade khamsub`) updates it. A wheel is attached to each release if you
+prefer `pip install khamsub-0.4.0-py3-none-any.whl`.
+
+From a clone, install the checkout itself:
+
     git clone https://github.com/melth-cmd/khamsub.git
     cd khamsub
-    python -m venv .venv && source .venv/bin/activate
-    pip install -r requirements.txt
+    uv tool install .
 
-Get an API key from openrouter.ai, copy the example file and put it in:
+The command on PATH is a snapshot: after editing the checkout, reinstall it, or
+run `python -m khamsub` from the clone to test the current files.
 
-    cp .env.example .env
-    # then edit .env and set OPENROUTER_API_KEY=your key
+Get an API key from openrouter.ai, then create the user-wide files once:
 
-If `.env` already exists, edit it in place: copying the example over it would
-replace the key. `.env` is read from the directory you run the tool in, and it
-is gitignored. The real environment wins if both are set, so a shell export
-(`export OPENROUTER_API_KEY=...`) and a CI secret still work. The key is never
-written to config or to the cache, and it is never printed.
-
-To keep the key and settings in one place for every folder, create the
-user-wide files once:
-
-    python translate.py --init-config
+    khamsub --init-config
 
 That writes `~/.config/khamsub/config.toml` and `~/.config/khamsub/.env` (mode
-0600) and leaves existing files alone. Edit the key there, check `[llm] model`
-in the config, and every folder uses them. A `config.toml` or `.env` in the
-current folder still wins, so one show can override the defaults.
-`XDG_CONFIG_HOME` is honoured if you set it.
+0600), leaves existing files alone, and is the easiest place to keep one key
+for every folder. Put the key after `OPENROUTER_API_KEY=` in the `.env` file.
 
-    python translate.py --where
+For a single folder you can also copy `.env.example` to `.env` in a clone, or
+just export the key. The real environment wins over any `.env`, so
+`export OPENROUTER_API_KEY=...` and a CI secret still work. `.env` is read from
+the folder you run in, and the key is never written to config, cache or report,
+and never printed.
+
+A `config.toml` or `.env` in the current folder wins over the user-wide files,
+so one show can override the defaults. `XDG_CONFIG_HOME` is honoured if you set
+it.
+
+    khamsub --where
 
 shows which files a run would use and whether they exist, and where the key
-would come from. It never prints the key. If no config exists at all, the tool
-says so once and falls back to its built-in defaults.
-
-Open `config.toml` and check `[llm] model`. The default is an example model; use
-any model that writes good Thai and that your key can call.
+would come from. It never prints the key. If no config exists at all, the
+built-in defaults are used: they include the example model and fallback prices,
+so a fresh install needs nothing but a key. To change the model, run
+`khamsub --init-config` once and edit `[llm] model`; use `khamsub --where` to
+confirm which file is in use. The example model is a starting point; use any
+model that writes good Thai and that your key can call.
 
 ## First run
 
-    python translate.py "Movie (2026).en.srt"
+    khamsub "Movie (2026).en.srt"
 
 This reads the English file and writes `Movie (2026).th.srt` next to it. It also
 writes a cache and a report (see "Files it makes"). A typical episode may take a
@@ -74,76 +84,76 @@ can be compared.
 
 ## Commands
 
-    python translate.py "Movie.en.srt"
+    khamsub "Movie.en.srt"
       Translate one file.
 
-    python translate.py *.en.srt
+    khamsub *.en.srt
       Translate several files in one run. A file that fails is reported, and the
       other files still run.
 
-    python translate.py "Show.en.srt" --dry-run
+    khamsub "Show.en.srt" --dry-run
       Show the batches and the input/output cost, with reasoning tokens shown
       as not estimated. No API call, no key needed.
 
-    python translate.py "Show.en.srt" --bible-only
+    khamsub "Show.en.srt" --bible-only
       Read the whole script once and write the story bible and glossary, then
       stop. Useful before translating a long series.
 
-    python translate.py "Show.en.srt" --fix
+    khamsub "Show.en.srt" --fix
       After translating, translate only the lines the checks flagged, with a
       stricter prompt.
 
-    python translate.py "Show.en.srt" --review
+    khamsub "Show.en.srt" --review
       After translating, ask the model to look at the flagged lines. Its ideas
       are listed at the top of the report; the subtitles are not changed.
 
-    python translate.py "Show.en.srt" --limit 20
+    khamsub "Show.en.srt" --limit 20
       Translate only the first 20 subtitles, for a quick test.
 
-    python translate.py "Show.en.srt" --range 100-140
+    khamsub "Show.en.srt" --range 100-140
       Translate only subtitle numbers 100 to 140 (real numbers from the file).
 
-    python translate.py "Show.en.srt" --output /tmp/out.srt
+    khamsub "Show.en.srt" --output /tmp/out.srt
       Write the Thai file somewhere else. One input file only.
 
-    python translate.py "Show.en.srt" --config mine.toml
+    khamsub "Show.en.srt" --config mine.toml
       Use another config file.
 
-    python translate.py --where
+    khamsub --where
       Show which config.toml and .env files a run would use, then exit. It
       never prints the key.
 
-    python translate.py --init-config
+    khamsub --init-config
       Create ~/.config/khamsub/config.toml and .env, then exit. Existing files
       are left untouched.
 
-    python translate.py --repair "Movie.th.srt"
+    khamsub --repair "Movie.th.srt"
       Repair a downloaded Thai file in place from Movie.en.srt. The original is
       kept as Movie.th.srt.bak and the repaired file keeps its name. Writes
       Movie.th.repair-report.txt. No key or config needed.
 
-    python translate.py --repair "Movie.th.srt" --dry-run
+    khamsub --repair "Movie.th.srt" --dry-run
       Print the repair report; write and rename nothing.
 
-    python translate.py --repair "Movie.th.srt" --source Other.en.srt
+    khamsub --repair "Movie.th.srt" --source Other.en.srt
       Use a differently named English file.
 
-    python translate.py --repair "Movie.th.srt" --force
+    khamsub --repair "Movie.th.srt" --force
       Overwrite an existing Movie.th.srt.bak.
 
-    python translate.py --repair "Movie.th.srt" --retranslate
+    khamsub --repair "Movie.th.srt" --retranslate
       Re-translate only the report's candidate lines. Costs money; run the same
       command with --dry-run first to see the estimate.
 
-    python translate.py "Show.en.srt" -v
+    khamsub "Show.en.srt" -v
       Add per-batch log detail. The progress line is shown either way.
 
-    python translate.py "Show.en.srt" --force
+    khamsub "Show.en.srt" --force
       Also accept inputs that look translated (`*.th.srt`). With `--bible-only`
       it rebuilds existing bible/glossary files, losing hand edits.
 
 To drop sound descriptions like `[door slams]` and `(laughs)` before
-translating, set `strip_hi = true` in `[cleanup]` of `config.toml`. That is a
+translating, set `strip_hi = true` in `[cleanup]` of your config file. That is a
 config setting, not a command.
 
 ## Files it makes
@@ -170,7 +180,7 @@ A normal run reads the bible and glossary if they exist; it never creates them.
 you are not happy with. Put the English next to it as `Movie.en.srt` (or pass
 `--source`) and run:
 
-    python translate.py --repair "Movie.th.srt"
+    khamsub --repair "Movie.th.srt"
 
 It does two things: safe text fixes (encoding, spaces, stray `{N}`, one missing
 or orphan tag, 3+ lines reduced to 2) and a report of lines that look wrong
@@ -190,10 +200,10 @@ touching anything; `--force` replaces an existing `.bak`.
 enough to retranslate (empty, truncated, English left in, mixed script,
 glossary). To rewrite only those:
 
-    python translate.py --repair "Movie.th.srt" --retranslate --dry-run
+    khamsub --repair "Movie.th.srt" --retranslate --dry-run
       Show the candidate count and the estimated cost; no request.
 
-    python translate.py --repair "Movie.th.srt" --retranslate
+    khamsub --repair "Movie.th.srt" --retranslate
       Rewrite the candidates, then write the file and report as usual.
 
 That pass uses the aligned English, the cache beside the English file, and its
@@ -251,7 +261,7 @@ files without `--force`.
 ## Use another provider
 
 Any service with an OpenAI-compatible API works (DeepSeek, Groq, a local server,
-and so on). Change three lines in `config.toml`:
+and so on). Change three lines in your config file:
 
     [llm]
     base_url = "https://api.deepseek.com/v1"
@@ -299,5 +309,10 @@ each past bug lived. Read it before your first change.
 
 The tests need `pytest`, which is not needed to run the tool:
 
-    uv pip install -r requirements-dev.txt
+    python -m venv .venv && source .venv/bin/activate
+    pip install -e ".[dev]"
     pytest -q
+
+From a checkout, `python -m khamsub` and the small `translate.py` shim both run
+the current files without installing anything. Add `-m live` for the paid API
+tests, or `-m packaging` for the wheel build/install test.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from batcher import Batch, SourceEntry, make_batches
+from khamsub.batcher import Batch, SourceEntry, make_batches
 
 
 def make_batch(count: int = 3, start: int = 1, size: int | None = None) -> Batch:

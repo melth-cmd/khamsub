@@ -1,0 +1,1092 @@
+"""Command line entry point.
+
+    khamsub input.en.srt
+    khamsub *.en.srt --config my.toml
+    khamsub input.en.srt --bible-only
+
+The API key comes from the environment variable named in [llm] key_env, or
+from ./.env when that is empty. It is read only when the client is built, and
+never printed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+import sys
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+
+from . import __version__
+from . import batcher
+from . import bible
+from . import cache as cache_module
+from . import config as config_module
+from . import glossary
+from . import llm
+from . import paths
+from . import pipeline
+from . import pricing
+from . import progress
+from . import repair
+import srt
+from . import srtio
+from . import verify
+
+log = logging.getLogger("translate")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="khamsub",
+        description="Translate English .srt subtitles into Thai with an LLM.",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
+    parser.add_argument(
+        "files", nargs="*", metavar="FILE",
+        help="English .srt file(s), or Thai files with --repair; not needed "
+        "with --where or --init-config",
+    )
+    parser.add_argument(
+        "--config", metavar="PATH",
+        help="Path to config.toml (default: ./config.toml, then "
+        "~/.config/khamsub/config.toml)",
+    )
+    parser.add_argument(
+        "--where", action="store_true",
+        help="Show which config.toml and .env files would be used, then exit",
+    )
+    parser.add_argument(
+        "--init-config", action="store_true",
+        help="Create ~/.config/khamsub/config.toml and .env, then exit",
+    )
+    parser.add_argument(
+        "--repair", action="store_true",
+        help="Repair a Thai .srt in place from its English counterpart, keeping "
+        "FILE.bak; no API key needed",
+    )
+    parser.add_argument(
+        "--source", metavar="PATH",
+        help="English .srt for --repair (default: the .en. counterpart)",
+    )
+    parser.add_argument(
+        "--retranslate", action="store_true",
+        help="With --repair: re-translate the lines the report calls candidates "
+        "(costs money; use --dry-run first)",
+    )
+    parser.add_argument(
+        "--output", metavar="PATH", help="Write here instead of FILE.th.srt (one file only)"
+    )
+    parser.add_argument(
+        "--limit", type=int, metavar="N", help="Translate only the first N entries"
+    )
+    parser.add_argument(
+        "--range", dest="range_", metavar="A-B",
+        help="Translate only entries with subtitle indexes A to B (inclusive)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Show what would happen without calling the API: batches and cost "
+        "for a translation, the report for --repair (nothing written)",
+    )
+    parser.add_argument(
+        "--bible-only", action="store_true",
+        help="Read the script once and write FILE.bible.md + FILE.glossary.toml, "
+        "then stop (no translation)",
+    )
+    parser.add_argument(
+        "--fix", action="store_true",
+        help="After translating, re-translate only the entries the checks flagged "
+        "(stricter prompt; the report shows what changed)",
+    )
+    parser.add_argument(
+        "--review", action="store_true",
+        help="After translating, ask the model to review the flagged lines and put its "
+        "suggestions at the top of the report (nothing is applied)",
+    )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Also accept inputs that look like existing translations (*.th.srt), "
+        "rebuild bible/glossary files that already exist, and for --repair "
+        "overwrite an existing .bak",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Show per-batch progress"
+    )
+    return parser
+
+
+def planned_output(
+    source: Path, settings: config_module.Settings, output: Path | None = None
+) -> Path:
+    """Where translating `source` would be written."""
+    return output or srtio.output_path_for(
+        source, strip_en_suffix=settings.output.strip_en_suffix
+    )
+
+
+def bible_paths(source: Path) -> tuple[Path, Path]:
+    """Where the pre-pass writes its two hand-editable files."""
+    return (
+        srtio.sidecar_path(source, ".bible.md"),
+        srtio.sidecar_path(source, ".glossary.toml"),
+    )
+
+
+def check_bible_targets(files: list[str], force: bool = False) -> list[str]:
+    """Files the pre-pass would overwrite, checked before any call is made.
+
+    Both files are hand-editable, so rebuilding is never implicit: it takes
+    --force, and every affected file is reported before the first call.
+    """
+    if force:
+        return []
+
+    problems: list[str] = []
+    for name in files:
+        source = Path(name)
+        if not source.is_file():
+            continue  # check_inputs already reported it
+        existing = [path for path in bible_paths(source) if path.exists()]
+        if existing:
+            problems.append(
+                f"{existing[0]} already exists; use --force to rebuild the bible "
+                "and glossary (hand edits will be lost)"
+            )
+    return problems
+
+
+def looks_translated(path: Path) -> bool:
+    """True for names this program would produce: Movie.th.srt, Movie.en.th.srt."""
+    return path.suffix.lower() == ".srt" and path.stem.lower().endswith(".th")
+
+
+def check_inputs(
+    files: list[str],
+    settings: config_module.Settings,
+    output: Path | None = None,
+    force: bool = False,
+) -> list[str]:
+    """Every reason the file list cannot be translated, checked before any call.
+
+    One batch run is a single instruction, so it is all or nothing: reporting a
+    collision after three files were translated has already overwritten one.
+    """
+    problems: list[str] = []
+    seen: dict[Path, Path] = {}
+    targets: dict[Path, Path] = {}
+
+    for name in files:
+        source = Path(name)
+        if not source.exists():
+            problems.append(f"{source} not found")
+            continue
+        if not source.is_file():
+            problems.append(f"{source} is not a file")
+            continue
+
+        resolved = source.resolve()
+        if resolved in seen:
+            problems.append(f"{source} is given more than once")
+            continue
+        seen[resolved] = source
+
+        if not force and looks_translated(source):
+            problems.append(
+                f"{source} looks like an existing translation (name ends in .th); "
+                "use --force to translate it anyway"
+            )
+
+        target = planned_output(source, settings, output)
+        key = target.resolve()
+        if key == resolved:
+            problems.append(f"{source} would be overwritten by its own output")
+            continue
+        if key in targets:
+            problems.append(
+                f"{source} and {targets[key]} would both write {target.name}; "
+                "translate them one at a time"
+            )
+            continue
+        targets[key] = source
+
+    return problems
+
+
+def load_notes_for(files: list[str]) -> tuple[dict[Path, bible.Notes], list[str]]:
+    """Read every file's bible and glossary before any work starts.
+
+    One call per run, so an edit always applies to the next run. Problems are
+    collected rather than raised: a typo in a hand-edited glossary should stop
+    the run once, with every bad file named, not three files in.
+    """
+    notes: dict[Path, bible.Notes] = {}
+    problems: list[str] = []
+    for name in files:
+        source = Path(name)
+        if not source.is_file():
+            continue  # check_inputs already reported it
+        try:
+            notes[source] = bible.load_notes(source)
+        except (bible.BibleError, glossary.GlossaryError) as exc:
+            problems.append(str(exc))
+    return notes, problems
+
+
+def missing_notes_hint(notes: dict[Path, bible.Notes]) -> str | None:
+    """One line pointing at --bible-only, or None when every file has a bible."""
+    missing = [source.name for source, entry in notes.items() if not entry.has_bible]
+    if not missing:
+        return None
+    if len(missing) == 1:
+        return f"hint: no story bible for {missing[0]} (optional; --bible-only builds one)"
+    return (
+        f"hint: no story bible for {len(missing)} of {len(notes)} files "
+        "(optional; --bible-only builds one)"
+    )
+
+
+def translate_one(
+    client: llm.ChatClient,
+    source: Path,
+    settings: config_module.Settings,
+    output: Path | None = None,
+    limit: int | None = None,
+    range_: str | None = None,
+    notes: bible.Notes | None = None,
+    fix: bool = False,
+    review: bool = False,
+    progress: Callable[[pipeline.Progress], None] | None = None,
+) -> tuple[pipeline.TranslatedFile, Path, Path | None]:
+    """Translate a single file and write its report.
+
+    Returns (result, output path, report path); the report path is None when it
+    could not be written, which is a warning, not a failed translation.
+    """
+    target = planned_output(source, settings, output)
+    if notes is not None:
+        log.info(
+            "%s: bible %s, glossary %s",
+            source.name,
+            f"{notes.bible_path.name} ({len(notes.bible):,} chars)"
+            if notes.has_bible
+            else "none",
+            f"{notes.glossary_path.name} ({len(notes.terms)} "
+            f"term{'' if len(notes.terms) == 1 else 's'})"
+            if notes.has_glossary
+            else "none",
+        )
+    terms = notes.terms if notes is not None else ()
+    result, target = pipeline.translate_file(
+        client,
+        source,
+        target,
+        encoding=settings.output.encoding,
+        strip_hi=settings.cleanup.strip_hi,
+        model=settings.llm.model,
+        size=settings.batch.size,
+        context_before=settings.batch.context_before,
+        context_after=settings.batch.context_after,
+        max_retries=settings.llm.max_retries,
+        limit=limit,
+        range_=range_,
+        bible=notes.bible if notes is not None else "",
+        terms=terms,
+        fix=fix,
+        review=review,
+        progress=progress,
+    )
+    return result, target, write_report_for(source, target, result, terms, settings)
+
+
+def write_report_for(
+    source: Path,
+    target: Path,
+    result: pipeline.TranslatedFile,
+    terms: Sequence[glossary.Term],
+    settings: config_module.Settings,
+) -> Path | None:
+    """Verify the finished file and write its report beside the source.
+
+    An unwritable report only warns: the subtitles are already written, and a
+    read-only folder must not turn a finished translation into a failed run.
+    """
+    verification = verify.verify_file(result, terms)
+    text = verify.render_report(
+        result,
+        verification,
+        source_name=source.name,
+        target_name=target.name,
+        model=settings.llm.model,
+    )
+    path = verify.report_path(source)
+    try:
+        verify.write_report(path, text)
+    except OSError as exc:
+        log.warning("could not write %s: %s", path, exc)
+        return None
+    return path
+
+
+def _usage_text(
+    usage: llm.Usage,
+    detail: bool = True,
+    providers: Mapping[str, int] | None = None,
+) -> str:
+    """Tokens, optionally split, the cost when known, and who served the requests.
+
+    `completion_tokens` already includes `reasoning_tokens`, so reasoning is
+    shown as part of the output rather than added to it.
+    """
+    tokens = usage.prompt_tokens + usage.completion_tokens
+    text = f"{tokens:,} tokens"
+    if detail and tokens:
+        parts = [f"{usage.prompt_tokens:,} in", f"{usage.completion_tokens:,} out"]
+        if usage.reasoning_tokens:
+            parts.append(f"{usage.reasoning_tokens:,} reasoning")
+        if usage.cached_tokens:
+            parts.append(f"{usage.cached_tokens:,} cached")
+        text += " (" + ", ".join(parts) + ")"
+    if usage.cost_usd is not None:
+        text += f" ${usage.cost_usd:.4f}"
+    return text + _via_text(providers or {})
+
+
+def _via_text(providers: Mapping[str, int]) -> str:
+    """Who served the requests, or nothing when the provider did not say.
+
+    One provider is named on its own; a mixed run shows how many requests each
+    served, because the price differs between them.
+    """
+    if not providers:
+        return ""
+    if len(providers) == 1:
+        return f" via {next(iter(providers))}"
+    shown = []
+    for name, count in sorted(providers.items()):
+        unit = "request" if count == 1 else "requests"
+        shown.append(f"{name} ({count} {unit})")
+    return " via " + ", ".join(shown)
+
+
+def _summary(
+    source: Path,
+    target: Path,
+    result: pipeline.TranslatedFile,
+    notes: bible.Notes | None = None,
+) -> str:
+    count = len(result.subtitles)
+    parts = [
+        f"{source.name} -> {target.name}",
+        f"{count} {'entry' if count == 1 else 'entries'}",
+    ]
+    if result.dropped:
+        parts.append(f"{len(result.dropped)} dropped")
+    if result.failures:
+        parts.append(f"{len(result.failures)} FAILED")
+    parts.append(_usage_text(result.usage, providers=result.providers))
+    if notes is not None and notes.has_bible:
+        parts.append(f"bible {len(notes.bible):,} chars")
+    return "  ".join(parts)
+
+
+def _dry_run(
+    args,
+    settings: config_module.Settings,
+    notes: dict[Path, bible.Notes] | None = None,
+) -> int:
+    """Report what the run would do. Needs no API key and makes no calls."""
+    notes = notes or {}
+    price = pricing.fetch_price(settings.llm.model, settings.llm.base_url)
+    if price is None:
+        price = (settings.llm.input_usd_per_mtok, settings.llm.output_usd_per_mtok)
+    input_price, output_price = price
+    status = 0
+    for name in args.files:
+        source = Path(name)
+        if not source.exists():
+            print(f"error: {source} not found", file=sys.stderr)
+            status = 2
+            continue
+
+        loaded = srtio.load_srt(source)
+        estimate = pipeline.estimate(
+            loaded.subtitles,
+            strip_hi=settings.cleanup.strip_hi,
+            size=settings.batch.size,
+            context_before=settings.batch.context_before,
+            context_after=settings.batch.context_after,
+            limit=args.limit,
+            range_=args.range_,
+            bible=notes[source].bible if source in notes else "",
+            terms=notes[source].terms if source in notes else (),
+            input_usd_per_mtok=input_price,
+            output_usd_per_mtok=output_price,
+        )
+        dropped = f", {estimate.dropped} dropped" if estimate.dropped else ""
+        batches = "batch" if estimate.batches == 1 else "batches"
+        entries = "entry" if estimate.entries == 1 else "entries"
+        print(
+            f"{source.name}: {estimate.entries} {entries}{dropped} in "
+            f"{estimate.batches} {batches}"
+        )
+        _print_estimate(estimate, input_price, output_price)
+    return status
+
+
+# Reasoning tokens per visible output token, measured on samples/coverage.srt:
+# one 6-cue run spent 347 reasoning tokens for 148 visible ones. It is only an
+# illustration, not a prediction -- a reasoning model decides this for itself and
+# the figure moves with the prompt and the model -- but the estimate should not
+# quietly ignore what was 70% of the bill on that run.
+REASONING_PER_OUTPUT = 2.3
+
+
+def _print_estimate(
+    estimate: pipeline.Estimate, input_price: float, output_price: float
+) -> None:
+    """The estimate, split so the reasoning gap is visible instead of hidden."""
+    priced = bool(input_price or output_price)
+    reasoning_tokens = int(estimate.completion_tokens * REASONING_PER_OUTPUT)
+    reasoning_cost = reasoning_tokens / 1e6 * output_price
+
+    def money(tokens: int, price: float) -> str:
+        if not price:
+            return ""
+        return f"  ~${tokens / 1e6 * price:.4f}  (${price:.2f}/Mtok)"
+
+    print(
+        f"  input      ~{estimate.prompt_tokens:,} tokens"
+        f"{money(estimate.prompt_tokens, input_price)}"
+    )
+    print(
+        f"  output     ~{estimate.completion_tokens:,} tokens"
+        f"{money(estimate.completion_tokens, output_price)}"
+    )
+    print(
+        "  reasoning  not estimated: a reasoning model bills thinking at the "
+        "output rate."
+    )
+    print(
+        f"             At {REASONING_PER_OUTPUT:g}x the visible output (what "
+        "samples/coverage.srt spent)"
+    )
+    if output_price:
+        print(
+            f"             that is ~{reasoning_tokens:,} tokens, "
+            f"~${reasoning_cost:.4f} more. Your model may differ."
+        )
+    else:
+        print(f"             that is ~{reasoning_tokens:,} more output tokens.")
+    if priced:
+        print(
+            f"  total      ~${estimate.cost_usd:.4f} excluding reasoning, "
+            f"~${estimate.cost_usd + reasoning_cost:.4f} at that ratio"
+        )
+    else:
+        print(
+            "  total      cost unknown: no published price for this model and "
+            "none configured"
+        )
+
+
+def _bible_summary(
+    source: Path, result: bible.BibleResult, bible_path: Path, glossary_path: Path
+) -> str:
+    characters = len(result.bible.characters)
+    terms = len(result.bible.terms)
+    parts = [
+        f"{source.name} -> {bible_path.name}, {glossary_path.name}",
+        f"{characters} {'character' if characters == 1 else 'characters'}",
+        f"{terms} {'term' if terms == 1 else 'terms'}",
+        f"{result.total_tokens:,} tokens",
+    ]
+    return "  ".join(parts)
+
+
+def _bible_only(
+    args,
+    sources: list[Path],
+    settings: config_module.Settings,
+    client: llm.ChatClient,
+) -> int:
+    """Read each script once and write its bible and glossary, then stop."""
+    status = 0
+    for number, source in enumerate(sources, 1):
+        if len(sources) > 1:
+            print(f"[{number}/{len(sources)}] {source.name}", file=sys.stderr)
+
+        bible_path, glossary_path = bible_paths(source)
+        try:
+            loaded = srtio.load_srt(source)
+            prepared = pipeline.prepare(
+                loaded.subtitles, strip_hi=settings.cleanup.strip_hi
+            )
+            selected = batcher.select_range(
+                prepared.entries, limit=args.limit, range_=args.range_
+            )
+            title, year = bible.title_from_filename(source)
+            result = bible.build(client, selected, title=title, year=year)
+            bible.write(result.bible, bible_path, glossary_path)
+        except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest
+            print(f"error: {source.name}: {exc}", file=sys.stderr)
+            status = 1
+            continue
+
+        print(_bible_summary(source, result, bible_path, glossary_path))
+
+    if status == 0:
+        print(
+            "Edit the files by hand if needed, then translate without --bible-only.",
+            file=sys.stderr,
+        )
+    return status
+
+
+def _where_text(explicit: str | None = None) -> str:
+    """Every path a run would use, and which one wins. Never shows the key."""
+    lines = ["config.toml:"]
+    for label, path in config_module.candidates(explicit):
+        mark = "x" if path.exists() else " "
+        lines.append(f"  [{mark}] {paths.short(path)}  ({label})")
+
+    chosen, why = config_module.locate(explicit)
+    if chosen is None:
+        lines.append("  using: built-in defaults")
+    else:
+        lines.append(f"  using: {paths.short(chosen)}  ({why})")
+
+    lines.append("")
+    lines.append(".env:")
+    for label, path in paths.env_candidates():
+        mark = "x" if path.exists() else " "
+        lines.append(f"  [{mark}] {paths.short(path)}  ({label})")
+
+    key_env = config_module.key_env_from(chosen)
+    source, key_path = llm.key_source(key_env)
+    if source == "environment":
+        lines.append(f"  {key_env}: set in the environment")
+    elif source == "file" and key_path is not None:
+        lines.append(f"  {key_env}: set in {paths.short(key_path)}")
+    else:
+        existing = next(
+            (path for _, path in paths.env_candidates() if path.exists()), None
+        )
+        if existing is not None:
+            lines.append(
+                f"  {key_env}: not set (edit {paths.short(existing)} or export it)"
+            )
+        else:
+            lines.append(
+                f"  {key_env}: not set (export it, or run: khamsub --init-config)"
+            )
+    return "\n".join(lines)
+
+
+def _init_config() -> int:
+    """Create the user-wide config.toml and .env, and say what to do next."""
+    try:
+        rows = config_module.init_config()
+    except (OSError, config_module.ConfigError) as exc:
+        print(f"error: could not create the user config: {exc}", file=sys.stderr)
+        return 1
+
+    for path, status in rows:
+        print(f"{paths.short(path)}  {status}")
+    print()
+    print("Next:")
+    print(f"  edit {paths.short(paths.user_env())} and set OPENROUTER_API_KEY")
+    print(f"  edit {paths.short(paths.user_config())} and check [llm] model")
+    print("Or export OPENROUTER_API_KEY in your shell instead of using .env.")
+    return 0
+
+
+def _repair_conflicts(args) -> list[str]:
+    """Translation-only flags that make no sense with --repair."""
+    conflicts: list[str] = []
+    for flag, value in (
+        ("--fix", args.fix),
+        ("--review", args.review),
+        ("--bible-only", args.bible_only),
+    ):
+        if value:
+            conflicts.append(flag)
+    for flag, value in (
+        ("--limit", args.limit),
+        ("--range", args.range_),
+        ("--output", args.output),
+        ("--config", args.config),
+    ):
+        if value is not None:
+            conflicts.append(flag)
+    return conflicts
+
+
+def _write_repair(thai: Path, result: repair.RepairResult, report: str) -> Path:
+    """Write the repaired file, report and .bak so the original is never lost."""
+    temp = thai.with_name(thai.name + ".repair-tmp")
+    backup = Path(str(thai) + ".bak")
+    report_path = thai.with_suffix(".repair-report.txt")
+    try:
+        srtio.write_srt(temp, result.subtitles, encoding="utf-8")
+        os.chmod(temp, thai.stat().st_mode)
+        srtio.write_text(report_path, report)
+        os.replace(thai, backup)
+        try:
+            os.replace(temp, thai)
+        except OSError:
+            os.replace(backup, thai)
+            raise
+    except OSError:
+        temp.unlink(missing_ok=True)
+        report_path.unlink(missing_ok=True)
+        raise
+    return report_path
+
+
+def _pseudo_subtitles(result: repair.RepairResult) -> list[srt.Subtitle]:
+    """The aligned English line for each Thai cue, in the Thai cue's timing."""
+    return [
+        srt.Subtitle(
+            index=cue.index,
+            start=cue.start,
+            end=cue.end,
+            content=result.sources.get(cue.index, cue.content),
+            proprietary=getattr(cue, "proprietary", ""),
+        )
+        for cue in result.subtitles
+    ]
+
+
+def _cache_for(
+    source: Path, settings: config_module.Settings, notes: bible.Notes
+) -> cache_module.Cache:
+    """The cache beside the English source, with its glossary/bible key."""
+
+    def notes_key(index: int, text: str) -> str:
+        return glossary.fingerprint(glossary.matching(notes.terms, text), notes.bible)
+
+    return cache_module.Cache(
+        srtio.sidecar_path(source, ".cache.json"),
+        model=settings.llm.model,
+        glossary=notes_key,
+    ).load()
+
+
+def _retranslate_result(
+    client: llm.ChatClient,
+    result: repair.RepairResult,
+    source: Path,
+    settings: config_module.Settings,
+    notes: bible.Notes,
+) -> None:
+    """Re-translate only the candidate cues, then refresh the audit."""
+    translated = pipeline.translate_subtitles(
+        client,
+        _pseudo_subtitles(result),
+        strip_hi=False,
+        size=settings.batch.size,
+        context_before=settings.batch.context_before,
+        context_after=settings.batch.context_after,
+        bible=notes.bible,
+        terms=notes.terms,
+        cache=_cache_for(source, settings, notes),
+        indexes=result.candidates,
+        # The existing Thai came from somewhere else; its cached text is not
+        # evidence that the line is good, so the candidate is requested again.
+        ignore_cache=True,
+        seed={cue.index: cue.content for cue in result.subtitles},
+        strict=True,
+    )
+
+    by_index = {entry.index: entry for entry in translated.results if entry.ok}
+    updated = []
+    for cue in result.subtitles:
+        entry = by_index.get(cue.index)
+        if entry is None:
+            updated.append(cue)
+            continue
+        fix = repair.repair_text(cue.index, entry.text)
+        result.changes.extend(fix.changes)
+        result.problems.extend(fix.problems)
+        updated.append(
+            srt.Subtitle(
+                index=cue.index,
+                start=cue.start,
+                end=cue.end,
+                content=fix.text,
+                proprietary=getattr(cue, "proprietary", ""),
+            )
+        )
+
+    result.subtitles = updated
+    result.retranslated = sorted(by_index)
+    result.retranslate_failed = sorted(
+        entry.index for entry in translated.results if not entry.ok
+    )
+    result.retranslate_usage = result.retranslate_usage + translated.usage
+    result.retranslate_providers.update(translated.providers)
+    repair.refresh_audit(result, notes.terms)
+
+
+def _print_retranslate_estimate(
+    result: repair.RepairResult,
+    settings: config_module.Settings,
+    notes: bible.Notes,
+) -> None:
+    """The count and cost of the candidate pass, without calling the API."""
+    price = pricing.fetch_price(settings.llm.model, settings.llm.base_url)
+    if price is None:
+        price = (
+            settings.llm.input_usd_per_mtok,
+            settings.llm.output_usd_per_mtok,
+        )
+    estimate = pipeline.estimate(
+        _pseudo_subtitles(result),
+        size=settings.batch.size,
+        context_before=settings.batch.context_before,
+        context_after=settings.batch.context_after,
+        indexes=result.candidates,
+        bible=notes.bible,
+        terms=notes.terms,
+        input_usd_per_mtok=price[0],
+        output_usd_per_mtok=price[1],
+    )
+    print(
+        f"Retranslation estimate: {estimate.entries} candidate(s) in "
+        f"{estimate.batches} batch(es)"
+    )
+    _print_estimate(estimate, price[0], price[1])
+
+
+def _repair_main(args) -> int:
+    problems = _repair_conflicts(args)
+    if not args.files:
+        problems.append("at least one FILE is required with --repair")
+    if args.source is not None and len(args.files) > 1:
+        problems.append("--source can only be used with one input file")
+    if problems:
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 2
+
+    jobs: list[tuple[Path, Path]] = []
+    seen: set[Path] = set()
+    for name in args.files:
+        thai = Path(name)
+        if not thai.exists():
+            problems.append(f"{thai}: not found")
+            continue
+        if thai.is_dir():
+            problems.append(f"{thai}: is a directory")
+            continue
+        key = thai.resolve()
+        if key in seen:
+            problems.append(f"{thai}: listed twice")
+            continue
+        seen.add(key)
+
+        source = (
+            Path(args.source)
+            if args.source is not None
+            else srtio.english_counterpart(thai)
+        )
+        if source is None:
+            problems.append(
+                f"{thai.name}: no .en. counterpart in the name; pass --source PATH"
+            )
+            continue
+        if not source.exists():
+            problems.append(
+                f"{thai.name}: English source not found: {source}; pass --source PATH"
+            )
+            continue
+        if source.is_dir():
+            problems.append(f"{source}: English source is a directory")
+            continue
+        if source.resolve() == key:
+            problems.append(f"{thai.name}: source and input are the same file")
+            continue
+        thai_tail = srtio.language_tail(thai)
+        if thai_tail != srtio.language_tail(source) or thai_tail not in {"", "hi"}:
+            problems.append(
+                f"{thai.name} + {source.name}: only .en.srt/.th.srt and "
+                ".en.hi.srt/.th.hi.srt pairs are supported yet (see issue #21)"
+            )
+            continue
+
+        backup = Path(str(thai) + ".bak")
+        if backup.exists() and not args.force and not args.dry_run:
+            problems.append(
+                f"{backup.name}: backup already exists; pass --force to overwrite it"
+            )
+            continue
+
+        try:
+            loaded = srtio.load_srt(thai)
+        except Exception as exc:  # noqa: BLE001 - name the file, not a traceback
+            problems.append(f"{thai.name}: could not read it ({exc})")
+            continue
+        if not any(repair.has_thai(cue.content) for cue in loaded.subtitles):
+            if not args.force:
+                problems.append(
+                    f"{thai.name}: no Thai text found; pass --force if this is "
+                    "the right file"
+                )
+                continue
+
+        jobs.append((thai, source))
+
+    if problems:
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 2
+
+    prepared: list[tuple[Path, Path, bible.Notes, repair.RepairResult]] = []
+    for thai, source in jobs:
+        try:
+            notes = bible.load_notes(source)
+            result = repair.repair_file(thai, source, terms=notes.terms)
+        except Exception as exc:  # noqa: BLE001 - name the file, not a traceback
+            problems.append(f"{thai.name}: {exc}")
+            continue
+        prepared.append((thai, source, notes, result))
+
+    if problems:
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 2
+
+    settings = None
+    if args.retranslate and any(result.candidates for *_, result in prepared):
+        try:
+            settings = config_module.load_settings()
+        except config_module.ConfigError as exc:
+            print(f"config error: {exc}", file=sys.stderr)
+            return 2
+        if not settings.llm.model:
+            print(
+                "config error: [llm] model is empty; run `khamsub --init-config` "
+                "or set it in config.toml",
+                file=sys.stderr,
+            )
+            return 2
+
+        if not args.dry_run:
+            try:
+                client = config_module.build_client(settings)
+            except (config_module.ConfigError, llm.LLMError) as exc:
+                print(f"config error: {exc}", file=sys.stderr)
+                return 2
+            for thai, source, notes, result in prepared:
+                if not result.candidates:
+                    continue
+                try:
+                    _retranslate_result(client, result, source, settings, notes)
+                except Exception as exc:  # noqa: BLE001 - a failed call, not a crash
+                    print(f"error: {thai.name}: {exc}", file=sys.stderr)
+                    return 1
+
+    status = 0
+    for position, (thai, source, notes, result) in enumerate(prepared):
+        report = repair.render_report(result, dry_run=args.dry_run)
+        if args.dry_run:
+            print(report, end="")
+            if args.retranslate and result.candidates and settings is not None:
+                _print_retranslate_estimate(result, settings, notes)
+            if position < len(prepared) - 1:
+                print()
+            continue
+        try:
+            report_path = _write_repair(thai, result, report)
+        except OSError as exc:
+            print(f"error: {thai.name}: {exc}", file=sys.stderr)
+            status = 1
+            continue
+        print(report, end="")
+        print(
+            f"{thai.name}: repaired; backup {Path(str(thai) + '.bak').name}, "
+            f"report {report_path.name}"
+        )
+        if position < len(prepared) - 1:
+            print()
+    return status
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    logging.basicConfig(
+        level=logging.INFO if args.verbose else logging.WARNING,
+        format="%(message)s",
+    )
+
+    if args.source is not None and not args.repair:
+        print("error: --source is only used with --repair", file=sys.stderr)
+        return 2
+    if args.retranslate and not args.repair:
+        print("error: --retranslate is only used with --repair", file=sys.stderr)
+        return 2
+    if args.repair and (args.where or args.init_config):
+        print(
+            "error: --repair cannot be combined with --where or --init-config",
+            file=sys.stderr,
+        )
+        return 2
+    if args.where and args.init_config:
+        print("error: use --where or --init-config, not both", file=sys.stderr)
+        return 2
+    if args.where:
+        print(_where_text(args.config))
+        return 0
+    if args.init_config:
+        return _init_config()
+    if args.repair:
+        return _repair_main(args)
+    if not args.files:
+        print("error: at least one FILE is required", file=sys.stderr)
+        return 2
+
+    if args.output and len(args.files) > 1:
+        print("error: --output can only be used with a single input file", file=sys.stderr)
+        return 2
+    if args.output and args.bible_only:
+        print(
+            "error: --output is for translated subtitles; --bible-only writes "
+            "FILE.bible.md and FILE.glossary.toml next to the input",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.limit is not None and args.limit < 0:
+        print("error: --limit must not be negative", file=sys.stderr)
+        return 2
+    if args.range_ is not None:
+        try:
+            batcher.parse_range(args.range_)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+    try:
+        settings = config_module.load_settings(args.config)
+    except config_module.ConfigError as exc:
+        print(f"config error: {exc}", file=sys.stderr)
+        return 2
+
+    output = Path(args.output) if args.output else None
+    problems = check_inputs(args.files, settings, output, force=args.force)
+    if args.bible_only:
+        problems += check_bible_targets(args.files, force=args.force)
+    if problems:
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 2
+
+    # The bible and glossary are read here, once, so a hand edit applies to this
+    # run, and a broken glossary stops the run before a single paid call.
+    notes: dict[Path, bible.Notes] = {}
+    if not args.bible_only:
+        notes, note_problems = load_notes_for(args.files)
+        if note_problems:
+            for problem in note_problems:
+                print(f"error: {problem}", file=sys.stderr)
+            return 2
+        hint = missing_notes_hint(notes)
+        if hint:
+            print(hint, file=sys.stderr)
+
+    if args.dry_run:
+        return _dry_run(args, settings, notes)
+
+    if settings.output.bilingual:
+        print("warning: bilingual output is not implemented yet; writing Thai only",
+              file=sys.stderr)
+
+    sources = [Path(name) for name in args.files]
+    if len(sources) > 1 and (args.limit is not None or args.range_ is not None):
+        print("warning: --limit/--range apply to every file given", file=sys.stderr)
+
+    try:
+        client = config_module.build_client(settings)
+    except (config_module.ConfigError, llm.AuthError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.bible_only:
+        return _bible_only(args, sources, settings, client)
+
+    status = 0
+    failed_files = 0
+    entries = 0
+    usage = llm.Usage()
+    providers: Counter[str] = Counter()
+    leftover = 0
+
+    for number, source in enumerate(sources, 1):
+        if len(sources) > 1:
+            print(f"[{number}/{len(sources)}] {source.name}", file=sys.stderr)
+        try:
+            with progress.Reporter(live=False if args.verbose else None) as bar:
+                result, target, report = translate_one(
+                    client,
+                    source,
+                    settings,
+                    output,
+                    limit=args.limit,
+                    range_=args.range_,
+                    notes=notes.get(source),
+                    fix=args.fix,
+                    review=args.review,
+                    progress=bar.update,
+                )
+        except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest
+            print(f"error: {source.name}: {exc}", file=sys.stderr)
+            status = 1
+            failed_files += 1
+            continue
+
+        entries += len(result.subtitles)
+        usage = usage + result.usage
+        providers.update(result.providers)
+        leftover += len(result.failures)
+
+        print(_summary(source, target, result, notes.get(source)))
+        if result.failures:
+            print(
+                f"  {len(result.failures)} entr"
+                f"{'y' if len(result.failures) == 1 else 'ies'} left in English",
+                file=sys.stderr,
+            )
+        if report is not None:
+            print(f"  report: {report}", file=sys.stderr)
+
+    if len(sources) > 1:
+        print(_total(len(sources), failed_files, entries, leftover, usage, providers))
+    return status
+
+
+def _total(
+    files: int,
+    failed: int,
+    entries: int,
+    leftover: int,
+    usage: llm.Usage,
+    providers: Mapping[str, int] | None = None,
+) -> str:
+    """One line for the whole run, so 20 files do not hide the totals."""
+    parts = [f"{files} files", f"{files - failed} translated"]
+    if failed:
+        parts.append(f"{failed} FAILED")
+    parts.append(f"{entries} {'entry' if entries == 1 else 'entries'}")
+    if leftover:
+        parts.append(f"{leftover} left in English")
+    parts.append(_usage_text(usage, detail=False, providers=providers))
+    return "total: " + "  ".join(parts)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

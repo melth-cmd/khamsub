@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import io
 
-import pipeline
-import progress
+from khamsub import pipeline
+from khamsub import progress
 
 
 class FakeTTY(io.StringIO):

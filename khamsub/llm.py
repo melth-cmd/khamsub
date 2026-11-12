@@ -27,10 +27,10 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
 
-import layout
-import paths
-import tags
-from batcher import Batch, ContextLine, SourceEntry
+from . import layout
+from . import paths
+from . import tags
+from .batcher import Batch, ContextLine, SourceEntry
 
 log = logging.getLogger(__name__)
 

@@ -30,8 +30,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-import llm
-import srtio
+from . import llm
+from . import srtio
 
 log = logging.getLogger(__name__)
 

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-import glossary
-import pipeline
-import srtio
-import verify
+from khamsub import glossary
+from khamsub import pipeline
+from khamsub import srtio
+from khamsub import verify
 
 from conftest import FakeClient
 

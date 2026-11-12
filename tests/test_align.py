@@ -5,7 +5,7 @@ import datetime as dt
 import pytest
 import srt
 
-import align
+from khamsub import align
 
 
 def cue(index: int, start: float, end: float) -> srt.Subtitle:

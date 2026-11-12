@@ -38,11 +38,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
 
-import glossary
-import layout
-import llm
-import srtio
-import tags
+from . import glossary
+from . import layout
+from . import llm
+from . import srtio
+from . import tags
 
 log = logging.getLogger(__name__)
 

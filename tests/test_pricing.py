@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import pricing
+from khamsub import pricing
 
 PAYLOAD = {
     "data": [

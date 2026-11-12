@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-import bible
-import glossary
-import llm
-from batcher import SourceEntry
+from khamsub import bible
+from khamsub import glossary
+from khamsub import llm
+from khamsub.batcher import SourceEntry
 from conftest import FakeClient
 
 NOTES = {

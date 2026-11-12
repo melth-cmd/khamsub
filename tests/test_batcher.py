@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-import batcher
-from batcher import SourceEntry
+from khamsub import batcher
+from khamsub.batcher import SourceEntry
 
 
 def make_entries(count: int, start_index: int = 1) -> list[SourceEntry]:

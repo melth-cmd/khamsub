@@ -10,10 +10,16 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
+PACKAGE = ROOT / "khamsub"
 
 
 def test_every_module_is_mentioned_in_the_structure_file():
     text = (ROOT / "STRUCTURE.md").read_text(encoding="utf-8")
-    modules = sorted(path.name for path in ROOT.glob("*.py"))
+    modules = sorted(
+        path.name
+        for path in PACKAGE.glob("*.py")
+        if not path.name.startswith("__")
+    )
+    modules.append("translate.py")  # the root shim
     missing = [name for name in modules if f"`{name}`" not in text]
     assert not missing, "STRUCTURE.md does not mention: " + ", ".join(missing)

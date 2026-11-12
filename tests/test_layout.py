@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import layout
+from khamsub import layout
 
 
 # --- no work needed ---------------------------------------------------------

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import srt
 
-import repair
+from khamsub import repair
 
 
 def cue(index: int, start: float, end: float, text: str) -> srt.Subtitle:
@@ -292,7 +292,7 @@ def test_refresh_audit_recomputes_text_problems():
 
 
 def test_report_names_a_retranslation():
-    from llm import Usage
+    from khamsub.llm import Usage
 
     result = repair.RepairResult(
         retranslated=[2],

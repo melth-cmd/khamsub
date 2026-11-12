@@ -29,10 +29,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-import glossary
-import llm
-import srtio
-from batcher import SourceEntry
+from . import glossary
+from . import llm
+from . import srtio
+from .batcher import SourceEntry
 
 log = logging.getLogger(__name__)
 

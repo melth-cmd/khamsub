@@ -25,19 +25,19 @@ from typing import Callable, Collection, Mapping, Sequence
 
 import srt
 
-import batcher
-import cache as cache_module
-import glossary
-import hi
-import layout
-import llm
-import runner
-import srtio
-import tags
-import verify
-from batcher import SourceEntry
-from llm import Usage
-from runner import EntryResult
+from . import batcher
+from . import cache as cache_module
+from . import glossary
+from . import hi
+from . import layout
+from . import llm
+from . import runner
+from . import srtio
+from . import tags
+from . import verify
+from .batcher import SourceEntry
+from .llm import Usage
+from .runner import EntryResult
 
 log = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import paths
+from khamsub import paths
 
 
 def test_xdg_config_home_is_honoured(monkeypatch, tmp_path):

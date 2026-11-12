@@ -22,7 +22,7 @@ import threading
 import time
 from typing import TextIO
 
-import pipeline
+from . import pipeline
 
 # Four redraws a second: fast enough to look alive, slow enough to cost nothing.
 TICK_S = 0.25

@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
-import llm
-import paths
+from . import llm
+from . import paths
 
 log = logging.getLogger(__name__)
 
@@ -29,11 +29,13 @@ DEFAULT_PATH = paths.current_config()
 # data next to config.py, so it travels with the wheel.
 TEMPLATE_PATH = Path(__file__).with_name("config.toml")
 IMPLEMENTED_WIRE_FORMATS = ("tagged",)
+# A fresh install with no config.toml still needs a model to estimate with.
+DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash-1017"
 
 # Used only if the template file is missing from an install.
-MINIMAL_CONFIG = """\
+MINIMAL_CONFIG = f"""\
 [llm]
-model = "deepseek/deepseek-v4.1-flash-1017"
+model = "{DEFAULT_MODEL}"
 """
 
 ENV_TEMPLATE = """\
@@ -51,13 +53,13 @@ class ConfigError(Exception):
 class LLMSettings:
     base_url: str = llm.DEFAULT_BASE_URL
     key_env: str = llm.DEFAULT_KEY_ENV
-    model: str = ""
+    model: str = DEFAULT_MODEL
     temperature: float = 0.25
     timeout_s: float = 120.0
     max_retries: int = 3
     wire_format: str = "tagged"
-    input_usd_per_mtok: float = 0.0
-    output_usd_per_mtok: float = 0.0
+    input_usd_per_mtok: float = 0.30
+    output_usd_per_mtok: float = 1.20
     # Extra request headers, for OpenAI-compatible providers that ask for them.
     extra_headers: Mapping[str, str] = field(default_factory=dict)
 
@@ -211,13 +213,17 @@ def settings_from_dict(data: Mapping[str, Any], path: Path | None = None) -> Set
     llm_settings = LLMSettings(
         base_url=_string(llm_section, "base_url", llm.DEFAULT_BASE_URL, "llm"),
         key_env=_string(llm_section, "key_env", llm.DEFAULT_KEY_ENV, "llm"),
-        model=_string(llm_section, "model", "", "llm"),
+        model=_string(llm_section, "model", DEFAULT_MODEL, "llm"),
         temperature=_number(llm_section, "temperature", 0.25, "llm", 0.0, 2.0),
         timeout_s=_number(llm_section, "timeout_s", 120.0, "llm", 1.0),
         max_retries=_integer(llm_section, "max_retries", 3, "llm", 0),
         wire_format=wire_format,
-        input_usd_per_mtok=_number(llm_section, "input_usd_per_mtok", 0.0, "llm", 0.0),
-        output_usd_per_mtok=_number(llm_section, "output_usd_per_mtok", 0.0, "llm", 0.0),
+        input_usd_per_mtok=_number(
+            llm_section, "input_usd_per_mtok", 0.30, "llm", 0.0
+        ),
+        output_usd_per_mtok=_number(
+            llm_section, "output_usd_per_mtok", 1.20, "llm", 0.0
+        ),
         extra_headers=_headers(llm_section, "extra_headers", "llm"),
     )
 

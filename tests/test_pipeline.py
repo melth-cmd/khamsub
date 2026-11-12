@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 import srt
 
-import glossary
-import llm
-import pipeline
-import srtio
-from batcher import SourceEntry
+from khamsub import glossary
+from khamsub import llm
+from khamsub import pipeline
+from khamsub import srtio
+from khamsub.batcher import SourceEntry
 from conftest import FakeClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -141,7 +141,7 @@ def test_nothing_to_translate_makes_no_calls():
 
 def test_usage_is_summed_across_batches():
     from conftest import FakeClient
-    from llm import Completion, Usage
+    from khamsub.llm import Completion, Usage
 
     client = FakeClient(
         [Completion("[1] หนึ่ง", Usage(10, 5)), Completion("[2] สอง", Usage(3, 2))]
@@ -316,7 +316,7 @@ def test_cache_can_be_disabled(tmp_path):
 
 def test_only_uncached_entries_are_requested(tmp_path):
     from conftest import FakeClient
-    import cache as cache_module
+    from khamsub import cache as cache_module
 
     source = copied_fixture(tmp_path)
     store = cache_module.Cache(tmp_path / "movie.cache.json", model="m/x")
@@ -336,7 +336,7 @@ def test_only_uncached_entries_are_requested(tmp_path):
 
 def test_cached_thai_is_used_as_context(tmp_path):
     from conftest import FakeClient
-    import cache as cache_module
+    from khamsub import cache as cache_module
 
     source = copied_fixture(tmp_path)
     store = cache_module.Cache(tmp_path / "movie.cache.json", model="m/x")
@@ -351,7 +351,7 @@ def test_cached_thai_is_used_as_context(tmp_path):
 
 def test_failed_entries_are_not_cached(tmp_path):
     from conftest import FakeClient
-    import cache as cache_module
+    from khamsub import cache as cache_module
 
     source = copied_fixture(tmp_path)
     client = FakeClient(["[1] สวัสดี\n[2] 你好\n[3] {0}สบายดี{1}"])
@@ -479,7 +479,7 @@ def test_dash_speakers_are_split_at_the_dash():
 
 def test_cached_merged_entry_is_rewrapped_on_read(tmp_path):
     from conftest import FakeClient
-    import cache as cache_module
+    from khamsub import cache as cache_module
 
     store = cache_module.Cache(tmp_path / "c.cache.json", model="m")
     store.put(1, "One.\nTwo.", "หนึ่ง สอง")  # merged by an older run
@@ -494,7 +494,7 @@ def test_cached_merged_entry_is_rewrapped_on_read(tmp_path):
 def test_cache_stores_the_raw_model_output(tmp_path):
     from conftest import FakeClient
     import json
-    import cache as cache_module
+    from khamsub import cache as cache_module
 
     store = cache_module.Cache(tmp_path / "c.cache.json", model="m")
     run(FakeClient(["[1] หนึ่ง สอง"]), [subtitle(1, "One.\nTwo.")], cache=store)
@@ -557,7 +557,7 @@ def test_a_term_only_in_a_context_line_is_not_sent():
 
 
 def test_batch_terms_and_glossary_for_batch_use_only_the_items():
-    from batcher import SourceEntry
+    from khamsub.batcher import SourceEntry
 
     batch = pipeline.batcher.make_batches(
         [SourceEntry(1, "Gandalf"), SourceEntry(2, "Hi")], size=1

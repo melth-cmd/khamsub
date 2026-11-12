@@ -1,4 +1,0 @@
-# Runtime: enough to run translate.py.
-srt>=3.5.3,<4
-charset-normalizer>=3.3
-openai>=1.30

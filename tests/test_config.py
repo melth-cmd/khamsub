@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
 
-import config
-import llm
-import paths
+from khamsub import config
+from khamsub import llm
+from khamsub import paths
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -22,6 +23,7 @@ def write(tmp_path: Path, text: str) -> Path:
 
 def test_empty_mapping_gives_documented_defaults():
     settings = config.settings_from_dict({})
+    assert settings.llm.model == config.DEFAULT_MODEL
     assert settings.llm.temperature == 0.25
     assert settings.llm.max_retries == 3
     assert settings.batch.size == 60
@@ -41,7 +43,7 @@ def test_missing_explicit_file_raises(tmp_path):
 
 
 def test_the_shipped_config_loads():
-    settings = config.load_settings(REPO / "config.toml")
+    settings = config.load_settings(REPO / "khamsub" / "config.toml")
     assert settings.llm.model == "deepseek/deepseek-v4.1-flash-1017"
     assert settings.llm.key_env == "OPENROUTER_API_KEY"
 
@@ -236,8 +238,9 @@ def test_boolean_is_not_accepted_as_a_number(tmp_path):
 
 
 def test_build_client_requires_a_model():
+    settings = config.settings_from_dict({"llm": {"model": ""}})
     with pytest.raises(config.ConfigError, match="model is empty"):
-        config.build_client(config.Settings())
+        config.build_client(settings)
 
 
 def test_build_client_requires_the_key(monkeypatch, tmp_path):
@@ -317,3 +320,17 @@ def test_build_client_passes_the_extra_headers(monkeypatch):
     config.build_client(settings)
     assert captured["extra_headers"] == {"HTTP-Referer": "https://me.test"}
     assert captured["base_url"] == llm.DEFAULT_BASE_URL
+
+
+def test_the_default_model_is_not_empty():
+    assert config.DEFAULT_MODEL
+    assert config.settings_from_dict({}).llm.model == config.DEFAULT_MODEL
+
+
+def test_the_shipped_template_matches_the_built_in_defaults():
+    """Drift guard: editing one without the other should fail here."""
+    template = REPO / "khamsub" / "config.toml"
+    shipped = config.settings_from_dict(
+        tomllib.loads(template.read_text(encoding="utf-8"))
+    )
+    assert shipped == config.Settings()

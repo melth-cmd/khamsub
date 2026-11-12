@@ -4,7 +4,7 @@ import dataclasses
 
 import pytest
 
-import glossary
+from khamsub import glossary
 
 THAI = "แกนดัล์ฟ"
 
@@ -270,7 +270,7 @@ def test_fingerprint_changes_with_the_bible():
 
 
 def test_fingerprint_without_notes_matches_the_old_empty_key():
-    import cache
+    from khamsub import cache
 
     assert glossary.fingerprint([]) == ""
     assert glossary.fingerprint([], "  \n") == ""

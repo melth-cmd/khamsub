@@ -17,41 +17,51 @@ never change.
 ## Layout at a glance
 
 ```
-khamsub/
-├── translate.py       # CLI: flags, pre-flight, run summary; --repair, --where,
-│                      #   --init-config dispatch before config/key loading
-├── config.py          # loads/validates config.toml (--config, folder, user dir);
-│                      #   --init-config writes the user files; builds the client
-├── config.toml        # user settings (model, batch, prices fallback)
-├── .env.example       # template for ./.env (the API key); .env is gitignored
-├── paths.py           # where config.toml and .env are looked for (folder, then
-│                      #   ~/.config/khamsub, or XDG_CONFIG_HOME/khamsub)
-├── align.py           # --repair: pair English and Thai cues by time
-├── repair.py          # --repair: safe text fixes plus a source-aware audit
-├── srtio.py           # read/write .srt, encoding fallback, output + sidecar naming
-├── tags.py            # {0} placeholders: protect / check / restore formatting tags
-├── hi.py              # strip SDH descriptions ("[door slams]"), keep "[Maya]"
-├── batcher.py         # batching, context lines, --limit/--range selection
-├── llm.py             # OpenRouter client, the prompt, reply validation, kept tokens, usage
-├── runner.py          # one batch: retry only failures, backoff, English fallback
-├── cache.py           # per-entry JSON cache, atomic saves, cache keys
-├── bible.py           # story bible pre-pass: chunk, prompt, merge, write both files
-├── glossary.py        # terms: validate, render, parse, load; per-batch selection
-├── layout.py          # normalise wrapped source lines; rewrap/merge the translation
-├── verify.py          # checks a finished file, returns flags, writes report.txt
-├── pipeline.py        # orchestrates one file: prepare -> batch -> translate -> write
-├── progress.py        # live progress line: bar, elapsed time, ETA
-├── pricing.py         # asks the provider for the model's current price
+khamsub/                    # repo root
+├── khamsub/                 # the installed package
+│   ├── __init__.py          # __version__ only (pyproject reads it)
+│   ├── __main__.py          # python -m khamsub
+│   ├── translate.py         # CLI: flags, pre-flight, run summary; --repair,
+│   │                        #   --where, --init-config dispatch before config/key
+│   ├── config.py            # loads/validates config.toml (--config, folder, user
+│   │                        #   dir); --init-config writes the user files
+│   ├── config.toml          # shipped template, copied by --init-config
+│   ├── paths.py             # where config.toml and .env are looked for (folder,
+│   │                        #   then ~/.config/khamsub or XDG_CONFIG_HOME/khamsub)
+│   ├── align.py             # --repair: pair English and Thai cues by time
+│   ├── repair.py            # --repair: safe text fixes plus a source-aware audit
+│   ├── srtio.py             # read/write .srt, encoding fallback, sidecar naming
+│   ├── tags.py              # {0} placeholders: protect / check / restore tags
+│   ├── hi.py                # strip SDH descriptions, keep "[Maya]"
+│   ├── batcher.py           # batching, context lines, --limit/--range selection
+│   ├── llm.py               # OpenRouter client, prompt, validation, usage
+│   ├── runner.py            # one batch: retry only failures, backoff, fallback
+│   ├── cache.py             # per-entry JSON cache, atomic saves, cache keys
+│   ├── bible.py             # story bible pre-pass: chunk, prompt, merge, write
+│   ├── glossary.py          # terms: validate, render, parse, load; per batch
+│   ├── layout.py            # normalise source lines; rewrap/merge the translation
+│   ├── verify.py            # checks a finished file, returns flags, writes report
+│   ├── pipeline.py          # one file: prepare -> batch -> translate -> write
+│   ├── progress.py          # live progress line: bar, elapsed time, ETA
+│   └── pricing.py           # asks the provider for the model's current price
+├── translate.py             # 3-line shim: python translate.py from a clone
+├── pyproject.toml           # metadata, deps, console script, pytest config
+├── .env.example             # template for ./.env (the API key); .env is gitignored
 ├── samples/
-│   ├── coverage.srt   # 60-cue sample: every behaviour we have fixed or argued about
-│   └── coverage.md    # the rubric for that sample, with cue numbers
-├── tests/             # one test file per module, plus conftest/helpers
-├── README.md          # user-facing: install, commands, report
-├── STRUCTURE.md       # this file
-└── CHANGELOG.md       # user-facing history
+│   ├── coverage.srt         # 60-cue sample: every behaviour we fixed or argued about
+│   └── coverage.md          # the rubric for that sample, with cue numbers
+├── tests/                   # one test file per module, plus conftest/helpers
+├── README.md                # user-facing: install, commands, report
+├── STRUCTURE.md             # this file
+└── CHANGELOG.md             # user-facing history
 
-# Local only, gitignored: AGENTS.md, SPEC.md, PROGRESS.md, PROGRESS-archive.md, subs/
+# Local only, gitignored: AGENTS.md, SPEC.md, PROGRESS.md, PROGRESS-archive.md,
+# subs/, .env, ./config.toml (a local override)
 ```
+
+`khamsub/translate.py` is the CLI module; `pyproject.toml` exposes it as the
+`khamsub` command. The package has no runtime state: config, `.env`, caches and
+reports stay next to the files you run it on, or in `~/.config/khamsub`.
 
 `subs/` holds real subtitle files to try things on and everything the tool writes
 next to them. Nothing in it is source.
@@ -64,7 +74,7 @@ files instead of guessing.
 aligned English. It never writes a file and never calls a model; the CLI owns
 the backup and the write.
 
-One `--repair` run goes: `translate.py` validates the pair (only `.en.srt` <->
+One `--repair` run goes: `khamsub/translate.py` validates the pair (only `.en.srt` <->
 `.th.srt` and `.en.hi.srt` <-> `.th.hi.srt` for now), `repair.repair_file` reads
 both and returns a `RepairResult`, then the CLI writes a temp, writes
 `FILE.repair-report.txt`, renames the original to `FILE.bak` and the temp to the
@@ -80,7 +90,7 @@ then the same write happens. `--dry-run` stops at the estimate.
 This is the mental model to use when the change you want is not in the table
 below. Each step names the file that owns it.
 
-1. `translate.py` parses the flags, loads `config.toml` through `config.py` (the
+1. `khamsub/translate.py` parses the flags, loads `config.toml` through `config.py` (the
    search order lives in `paths.py`: `--config`, current folder, then
    `~/.config/khamsub`), and builds the client (the key comes from the
    environment or `.env`, at that moment).
@@ -115,7 +125,8 @@ below. Each step names the file that owns it.
 | change how a whole file is processed, start to finish | `pipeline.py` | `prepare`, `translate_subtitles`, `retranslate_flagged` |
 | change cost, token or usage reporting | `llm.py`, `translate.py`, `pricing.py` | `Usage`, `_print_estimate`, `fetch_price` |
 | add a CLI flag | `translate.py` | then README.md |
-| add a config option | `config.py`, `config.toml` | then README.md |
+| add a config option | `config.py`, `khamsub/config.toml` | the template and the built-in defaults must match (tested); then README.md |
+| change install metadata or dependencies | `pyproject.toml` | `tests/test_packaging.py` covers it |
 | change what makes two runs share a cache entry | `cache.py`, `glossary.py` | `fingerprint` |
 | change the bible or glossary pre-pass | `bible.py` | |
 | strip or keep SDH descriptions | `hi.py` | |
@@ -189,7 +200,7 @@ against `samples/coverage.md`.
 ## Keeping this file current
 
 If you add a module, add it here — `tests/test_structure.py` fails when a `.py`
-file in the root is not mentioned.
+file in `khamsub/` is not mentioned.
 
 When you close a bug, add a row to "Symptom to module". That table is the
 highest-value part and stays accurate almost for free if it is part of closing

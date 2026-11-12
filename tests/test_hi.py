@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hi
+from khamsub import hi
 
 
 # --- strip_hi ---------------------------------------------------------------

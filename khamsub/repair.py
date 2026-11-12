@@ -28,12 +28,12 @@ from typing import Sequence
 
 import srt
 
-import align
-import glossary
-import layout
-import llm
-import srtio
-import verify
+from . import align
+from . import glossary
+from . import layout
+from . import llm
+from . import srtio
+from . import verify
 
 log = logging.getLogger(__name__)
 

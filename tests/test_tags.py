@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-import tags
-from tags import TagMismatch
+from khamsub import tags
+from khamsub.tags import TagMismatch
 
 
 # --- protect ----------------------------------------------------------------

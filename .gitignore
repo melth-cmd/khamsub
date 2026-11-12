@@ -28,3 +28,9 @@ AGENTS.md
 PROGRESS.md
 PROGRESS-archive.md
 SPEC.md
+
+# Packaging output and a local config override at the repo root
+/build/
+/dist/
+*.egg-info/
+/config.toml

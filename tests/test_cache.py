@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-import cache
-import llm
+from khamsub import cache
+from khamsub import llm
 
 
 def make(tmp_path, name="Movie.cache.json", **kwargs) -> cache.Cache:

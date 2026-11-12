@@ -18,13 +18,13 @@ try:
 except ImportError:  # pragma: no cover
     import httpx
 
-import llm
-import paths
-from batcher import ContextLine, SourceEntry, make_batches
+from khamsub import llm
+from khamsub import paths
+from khamsub.batcher import ContextLine, SourceEntry, make_batches
 from helpers import make_batch
 
 THAI_RE = re.compile(r"[\u0e00-\u0e7f]")
-CONFIG = Path(__file__).parent.parent / "config.toml"
+CONFIG = Path(__file__).parent.parent / "khamsub" / "config.toml"
 
 
 # --- encode -----------------------------------------------------------------
@@ -770,7 +770,7 @@ def test_an_email_followed_by_thai_punctuation_is_not_a_lost_token():
 
 
 def test_validate_reports_a_lost_number():
-    from batcher import make_batches, SourceEntry
+    from khamsub.batcher import make_batches, SourceEntry
 
     batch = make_batches([SourceEntry(1, '"Pen15"')], size=1)[0]
     decoded = llm.decode_entries('[1] "เพนฟิฟทีน"')
@@ -779,7 +779,7 @@ def test_validate_reports_a_lost_number():
 
 
 def test_validate_accepts_a_kept_number():
-    from batcher import make_batches, SourceEntry
+    from khamsub.batcher import make_batches, SourceEntry
 
     batch = make_batches([SourceEntry(1, '"Pen15"')], size=1)[0]
     decoded = llm.decode_entries('[1] "เพน15"')
@@ -816,7 +816,7 @@ def test_mixed_script_strips_markup_before_looking():
 
 
 def test_validate_reports_latin_glued_to_thai():
-    from batcher import make_batches, SourceEntry
+    from khamsub.batcher import make_batches, SourceEntry
 
     batch = make_batches([SourceEntry(841, "Bullshit.")], size=1)[0]
     decoded = llm.decode_entries("[841] ทwerp!")
