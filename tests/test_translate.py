@@ -1049,26 +1049,92 @@ def test_fix_and_review_fix_then_advise(project, fake):
 # --- reasoning (#23) --------------------------------------------------------
 
 
-def test_a_run_with_reasoning_off_writes_its_own_cache_key(project, fake):
-    (project / "config.toml").write_text(
-        '[llm]\nmodel = "test/model"\nreasoning = "off"\n', encoding="utf-8"
-    )
-    fake.queue(REPLIES)
+def test_a_run_uses_reasoning_off_by_default(project, monkeypatch):
+    modes: list[str] = []
+    client = FakeClient([REPLIES])
+
+    def build(settings, api_key=None):
+        modes.append(settings.llm.reasoning)
+        return client
+
+    monkeypatch.setattr(config, "build_client", build)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     status = translate.main(
         [str(project / "sample.en.srt"), "--config", str(project / "config.toml")]
     )
 
     assert status == 0
+    assert modes == ["off"]
+
+
+def test_reasoning_modes_resolve_for_each_pass():
+    parser = translate.build_parser()
+    settings = config.settings_from_dict({})
+
+    args = parser.parse_args(["x.en.srt"])
+    assert translate.run_reasoning(args, settings) == "off"
+    assert translate.correction_reasoning(args) == "default"
+    assert translate.bible_reasoning(args) == "default"
+
+    args = parser.parse_args(["x.en.srt", "--reasoning", "high"])
+    assert translate.run_reasoning(args, settings) == "high"
+    assert translate.correction_reasoning(args) == "high"
+    assert translate.bible_reasoning(args) == "high"
+
+
+def test_low_reasoning_warns_but_the_others_do_not(caplog):
+    with caplog.at_level("WARNING"):
+        translate.warn_low_reasoning("low")
+    assert "measured" in caplog.text
+
+    caplog.clear()
+    for mode in ("default", "off", "high"):
+        translate.warn_low_reasoning(mode)
+    assert not caplog.text
+
+
+def test_a_reasoning_mode_does_not_invalidate_the_cache(project, monkeypatch):
+    first = FakeClient([REPLIES])
+    calls = 0
+
+    def build(settings, api_key=None):
+        nonlocal calls
+        calls += 1
+        return first if calls == 1 else FakeClient()
+
+    monkeypatch.setattr(config, "build_client", build)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = [str(project / "sample.en.srt"), "--config", str(project / "config.toml")]
+
+    assert translate.main(args) == 0
+    assert translate.main(args + ["--reasoning", "high"]) == 0
+
+    assert first.call_count == 1  # the second run was served from the cache
     data = json.loads((project / "sample.cache.json").read_text(encoding="utf-8"))
     assert data["entries"]["1"]["key"] == cache.entry_key(
-        "Hello there.", model="test/model", reasoning="off"
+        "Hello there.", model="test/model"
     )
 
 
-def test_the_repair_retranslate_cache_carries_the_reasoning_mode(tmp_path):
-    settings = config.settings_from_dict({"llm": {"reasoning": "off"}})
-    store = translate._cache_for(tmp_path / "movie.en.srt", settings, bible.Notes())
-    assert store.reasoning == "off"
+def test_fix_uses_reasoning_default_unless_the_flag_says_otherwise(project, monkeypatch):
+    modes: list[str] = []
+
+    def build(settings, api_key=None):
+        modes.append(settings.llm.reasoning)
+        return FakeClient([REPLIES])
+
+    monkeypatch.setattr(config, "build_client", build)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = [str(project / "sample.en.srt"), "--config", str(project / "config.toml")]
+
+    assert translate.main(args) == 0
+    assert modes == ["off"]
+
+    assert translate.main(args + ["--fix"]) == 0
+    assert modes == ["off", "off", "default"]
+
+    assert translate.main(args + ["--fix", "--reasoning", "high"]) == 0
+    assert modes == ["off", "off", "default", "high"]
 
 
 # --- --strip-hi (flag, not a config setting) --------------------------------
@@ -1177,8 +1243,30 @@ def test_a_dry_run_uses_the_published_price(project, monkeypatch, capsys):
     assert status == 0
     assert "$" in out
     assert "input" in out and "output" in out and "reasoning" in out
-    assert "2.3x" in out  # the default still shows the reasoning illustration
-    assert "7x-11x" in out  # and says the illustration is a floor
+    assert "off: the request disables it" in out  # the new first-pass default
+    assert "2.3x" not in out
+
+
+def test_a_dry_run_with_an_explicit_mode_shows_the_reasoning_floor(
+    project, monkeypatch, capsys
+):
+    monkeypatch.setattr("khamsub.pricing.fetch_price", lambda *a, **k: (0.15, 0.60))
+    status = translate.main(
+        [
+            str(project / "sample.en.srt"),
+            "--config",
+            str(project / "config.toml"),
+            "--dry-run",
+            "--reasoning",
+            "default",
+        ]
+    )
+    out = capsys.readouterr().out
+
+    assert status == 0
+    assert "model default" in out
+    assert "2.3x" in out
+    assert "7x-11x" in out
 
 
 def test_print_estimate_with_reasoning_off_bills_no_thinking(capsys):

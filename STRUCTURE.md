@@ -125,7 +125,7 @@ below. Each step names the file that owns it.
 | change the progress line or what it reports | `progress.py` | `render`, `Reporter`; `pipeline.Progress` carries the numbers |
 | change how a whole file is processed, start to finish | `pipeline.py` | `prepare`, `translate_subtitles`, `retranslate_flagged` |
 | change cost, token or usage reporting | `llm.py`, `translate.py`, `pricing.py` | `Usage`, `_print_estimate`, `fetch_price` |
-| control a thinking model's reasoning | `config.py`, `llm.py` | `[llm] reasoning = "off"` sends `extra_body`; `translate.py` follows it in the estimate |
+| control a thinking model's reasoning | `config.py`, `llm.py`, `translate.py` | `[llm] reasoning` (off by default), `--reasoning`; `--fix`/`--review`/`--retranslate` get their own client |
 | add a CLI flag | `translate.py` | then README.md |
 | add a config option | `config.py`, `khamsub/config.toml` | the template and the built-in defaults must match (tested); then README.md |
 | change install metadata or dependencies | `pyproject.toml` | `tests/test_packaging.py` covers it |
@@ -150,7 +150,7 @@ Real bugs, and where each one lived. Useful when a symptom looks new.
 | speaker dashes ignored entirely | `layout.DASHES` was missing U+2010 |
 | a stub like "in school." forced onto its own line | `layout.normalise_source` in `pipeline.prepare` |
 | estimate far below the real bill | `llm.usage_from_response`, `pricing.py` |
-| most of the bill is reasoning tokens | `config.py` (`[llm] reasoning`), `llm.py` (`extra_body`), `translate.py` (`_print_estimate`) |
+| most of the bill is reasoning tokens | `config.py` (default off), `llm.py` (`extra_body`), `translate.py` (`--reasoning`, fix client) |
 | names and labels left in English | `llm.SYSTEM_PROMPT` (transliteration policy) |
 | the tool looks hung during a long run | `progress.py` — the live line and its ticker |
 
@@ -164,8 +164,9 @@ Break one of these and the tool is wrong even if the tests pass.
   combining mark or leading vowel.
 - `llm.PROMPT_VERSION` is part of every cache key. Changing the prompt without
   bumping it reuses translations written under the old rules.
-- A non-default `[llm] reasoning` mode is part of every cache key; `"default"`
-  leaves keys written before the setting existed unchanged.
+- Reasoning is not part of a cache key (it is a per-run dial like temperature):
+  a fix run with another mode reuses the first pass, and deleting the cache is
+  the way to re-translate under another mode.
 - The source text is part of the cache key, so normalising the source
   retranslates those entries once.
 - Numbers, URLs, @handles and short letter-digit codes must survive translation.

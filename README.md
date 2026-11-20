@@ -70,13 +70,18 @@ so a fresh install needs nothing but a key. To change the model, run
 confirm which file is in use. The example model is a starting point; use any
 model that writes good Thai and that your key can call.
 
-A thinking model can spend most of the bill on reasoning. `[llm] reasoning` is
-`"default"` (leave it to the model) or `"off"` (ask the API to disable it). On
-`samples/coverage.srt`, off cut the bill from $0.0031 to $0.0009 and the run
-from 75s to 9s. Effort values such as `"low"` are not offered: with the example
-model they cost more, not less. This is an OpenRouter parameter, so another
-OpenAI-compatible provider may reject it. Switching the mode re-translates the
-file once, because the mode is part of the cache key.
+A thinking model can spend most of the bill on reasoning, so a translation run
+starts with reasoning **off**. On `samples/coverage.srt`, off cut the bill from
+$0.0031 to $0.0009 and the run from 75s to 9s. `[llm] reasoning` sets the
+first-pass default: `"off"`, `"default"` (the provider's own setting), `"low"` or
+`"high"`. `--reasoning MODE` overrides it for one run. `--fix`, `--review` and
+`--repair --retranslate` use `"default"` unless `--reasoning` says otherwise,
+because only the flagged lines are sent; `--bible-only` also starts at
+`"default"`. `"low"` is accepted but warns: on the example model it measured
+~20x the thinking and 17x the cost of the default. This is an OpenRouter
+parameter, so another provider may reject it. The mode is not part of the
+cache: cached lines are reused, and only new work or a fix pass pays for
+reasoning. Delete the cache to translate a file again under another mode.
 
 ## First run
 
@@ -110,17 +115,27 @@ can be compared.
       other files still run.
 
     khamsub "Show.en.srt" --dry-run
-      Show the batches and the input/output cost. With `reasoning = "off"` the
-      total is the whole bill; otherwise reasoning is shown as a floor. No API
-      call, no key needed.
+      Show the batches and the input/output cost. A first pass is priced without
+      reasoning; `--reasoning default`, `low` or `high` shows the reasoning floor
+      instead. No API call, no key needed.
+
+    khamsub "Show.en.srt" --reasoning default
+      Run the first pass with the provider's own reasoning setting instead of
+      off. `low` and `high` ask for that effort; `low` warns because it measured
+      more expensive than the default on the example model. With `--fix`,
+      `--review` or `--repair --retranslate`, this also sets the correction pass
+      for that run.
 
     khamsub "Show.en.srt" --bible-only
       Read the whole script once and write the story bible and glossary, then
-      stop. Useful before translating a long series.
+      stop. Useful before translating a long series. Uses reasoning `default`
+      unless `--reasoning` says otherwise.
 
     khamsub "Show.en.srt" --fix
       After translating, translate only the lines the checks flagged, with a
-      stricter prompt.
+      stricter prompt and reasoning on by default. The first pass stays off and
+      comes from the cache, so only the flagged lines pay for reasoning; pass
+      `--reasoning off` to keep the fix cheap too.
 
     khamsub "Show.en.srt" --review
       After translating, ask the model to look at the flagged lines. Its ideas
@@ -162,7 +177,8 @@ can be compared.
 
     khamsub --repair "Movie.th.srt" --retranslate
       Re-translate only the report's candidate lines. Costs money; run the same
-      command with --dry-run first to see the estimate.
+      command with --dry-run first to see the estimate. The candidates use
+      reasoning `default`; `--reasoning off` makes them cheaper.
 
     khamsub "Show.en.srt" -v
       Add per-batch log detail. The progress line is shown either way.
@@ -313,9 +329,9 @@ key here:
 - Some lines are still English — open the report, or run again with `--fix`.
 - `rate_limited` — the tool waits and retries. If it keeps happening, try a
   smaller `[batch] size` (fewer tokens per request) or another model/provider.
-- The headline cost leaves out reasoning tokens, which a reasoning model spends
-  freely; set `[llm] reasoning = "off"` to stop them. A finished run prints the
-  exact cost it was charged.
+- The headline cost leaves out reasoning tokens, because a first pass runs with
+  reasoning off; `--fix` spends reasoning on the flagged lines only. A finished
+  run prints the exact cost it was charged.
 - "no story bible for ..." — that is only a hint. The tool works without one;
   `--bible-only` makes one.
 

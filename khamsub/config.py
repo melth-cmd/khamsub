@@ -29,11 +29,18 @@ DEFAULT_PATH = paths.current_config()
 # data next to config.py, so it travels with the wheel.
 TEMPLATE_PATH = Path(__file__).with_name("config.toml")
 IMPLEMENTED_WIRE_FORMATS = ("tagged",)
-# Reasoning control for a thinking model. "default" leaves the request exactly
-# as it was; "off" asks the API to stop thinking, which is what turns most of a
-# reasoning model's bill off. Effort values are deliberately not offered: on the
-# example model "low" measured ~20x the thinking of the default.
-REASONING_MODES = ("default", "off")
+# Reasoning control for a thinking model. The first pass defaults to "off"
+# because reasoning can be most of the bill; the correction passes (--fix,
+# --review, --repair --retranslate) default to "default" because only the
+# flagged lines are sent and a better fix is worth the cost. "low"/"high" send
+# an explicit effort. Effort "low" measured ~20x the thinking of the default on
+# the example model, so it is offered but warned about.
+REASONING_MODES = ("default", "off", "low", "high")
+DEFAULT_REASONING = "off"
+DEFAULT_FIX_REASONING = "default"
+# --bible-only is a one-time quality pre-pass, so it keeps reasoning on by
+# default even though a normal translation run starts with it off.
+DEFAULT_BIBLE_REASONING = "default"
 # A fresh install with no config.toml still needs a model to estimate with.
 DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash-1017"
 
@@ -63,7 +70,7 @@ class LLMSettings:
     timeout_s: float = 120.0
     max_retries: int = 3
     wire_format: str = "tagged"
-    reasoning: str = "default"
+    reasoning: str = DEFAULT_REASONING
     input_usd_per_mtok: float = 0.30
     output_usd_per_mtok: float = 1.20
     # Extra request headers, for OpenAI-compatible providers that ask for them.
@@ -229,11 +236,11 @@ def settings_from_dict(data: Mapping[str, Any], path: Path | None = None) -> Set
             f"[llm] wire_format {wire_format!r} is not implemented yet; "
             f"use one of {', '.join(IMPLEMENTED_WIRE_FORMATS)}"
         )
-    reasoning = _string(llm_section, "reasoning", "default", "llm")
+    reasoning = _string(llm_section, "reasoning", DEFAULT_REASONING, "llm")
     if reasoning not in REASONING_MODES:
         raise ConfigError(
             f"[llm] reasoning {reasoning!r} is not supported; use one of "
-            f"{', '.join(REASONING_MODES)} (\"off\" disables thinking)"
+            f"{', '.join(REASONING_MODES)}"
         )
 
     llm_settings = LLMSettings(

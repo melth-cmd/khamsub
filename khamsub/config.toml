@@ -11,9 +11,12 @@ max_retries = 3
 wire_format = "tagged"           # only "tagged" is implemented
 
 # A thinking model's reasoning is billed as output and can be most of the bill.
-# "default" leaves it to the model; "off" asks the API to disable it. Effort
-# values such as "low" are not offered: on the example model they cost more.
-reasoning = "default"
+# "off" (the default for a translation run) disables it; "default" leaves it to
+# the model; "low"/"high" ask for that effort. "low" is not a cheap setting on
+# the example model: it measured ~20x the thinking. --fix, --review and
+# --repair --retranslate default to "default" instead, because only flagged
+# lines are sent. Use --reasoning to override both for one run.
+reasoning = "off"
 
 # USD per million tokens, used only for --dry-run cost estimates when the
 # provider's published price cannot be fetched. OpenRouter is asked for the live

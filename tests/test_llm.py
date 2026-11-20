@@ -476,6 +476,13 @@ def test_complete_sends_no_reasoning_block_by_default():
     assert set(request) == {"model", "messages", "temperature"}
 
 
+@pytest.mark.parametrize("mode", ["low", "high"])
+def test_complete_sends_an_explicit_effort(mode):
+    client, request = client_capturing(mode)
+    client.complete([{"role": "user", "content": "x"}])
+    assert request["extra_body"] == {"reasoning": {"effort": mode}}
+
+
 def test_reasoning_off_leaves_the_rest_of_the_body_alone():
     client, request = client_capturing("off")
     client.complete([{"role": "user", "content": "x"}], temperature=0.1)

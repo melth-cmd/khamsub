@@ -261,17 +261,18 @@ def test_boolean_is_not_accepted_as_a_number(tmp_path):
 # --- reasoning (#23) --------------------------------------------------------
 
 
-def test_reasoning_defaults_to_letting_the_model_decide():
-    assert config.settings_from_dict({}).llm.reasoning == "default"
+def test_reasoning_defaults_to_off():
+    assert config.settings_from_dict({}).llm.reasoning == "off"
 
 
-def test_reasoning_off_is_read_from_the_file(tmp_path):
-    settings = config.load_settings(write(tmp_path, '[llm]\nreasoning = "off"\n'))
-    assert settings.llm.reasoning == "off"
+@pytest.mark.parametrize("value", ["default", "off", "low", "high"])
+def test_every_reasoning_mode_is_accepted(tmp_path, value):
+    settings = config.load_settings(write(tmp_path, f'[llm]\nreasoning = "{value}"\n'))
+    assert settings.llm.reasoning == value
 
 
-@pytest.mark.parametrize("value", ["low", "medium", "high", "on", "Off", ""])
-def test_reasoning_refuses_anything_but_default_or_off(tmp_path, value):
+@pytest.mark.parametrize("value", ["medium", "max", "none", "on", "Off", ""])
+def test_reasoning_refuses_anything_else(tmp_path, value):
     with pytest.raises(config.ConfigError, match="reasoning"):
         config.load_settings(write(tmp_path, f'[llm]\nreasoning = "{value}"\n'))
 
@@ -320,6 +321,7 @@ def test_build_client_uses_settings(monkeypatch):
     client = config.build_client(settings)
     assert client.model == "m/x"
     assert client.temperature == 0.4
+    assert client.reasoning == "off"  # the first-pass default
 
 
 # --- extra headers (other providers, step 22) -------------------------------

@@ -649,11 +649,11 @@ def translate_file(
     strip_hi: bool = False,
     use_cache: bool = True,
     model: str = "",
-    reasoning: str = "default",
     bible: str = "",
     terms: Sequence[glossary.Term] = (),
     fix: bool = False,
     review: bool = False,
+    fix_client: llm.ChatClient | None = None,
     **kwargs,
 ) -> tuple[TranslatedFile, Path]:
     """Read, translate and write one file. Returns (result, output path).
@@ -681,7 +681,6 @@ def translate_file(
             srtio.sidecar_path(source, ".cache.json"),
             model=model,
             glossary=notes_key,
-            reasoning=reasoning,
         ).load()
 
     result = translate_subtitles(
@@ -693,9 +692,13 @@ def translate_file(
         cache=cache,
         **kwargs,
     )
+    # --fix and --review may run with another reasoning mode than the first
+    # pass (the CLI builds the second client); the flags, prompts and cache are
+    # otherwise identical.
+    correction_client = fix_client or client
     if fix:
         result = retranslate_flagged(
-            client,
+            correction_client,
             loaded.subtitles,
             result,
             strip_hi=strip_hi,
@@ -706,7 +709,7 @@ def translate_file(
         )
     if review:
         result = review_flagged(
-            client,
+            correction_client,
             loaded.subtitles,
             result,
             strip_hi=strip_hi,

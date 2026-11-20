@@ -194,34 +194,6 @@ def test_entry_key_does_not_depend_on_the_index(tmp_path):
     assert store.key_for(1, "Hello.") == store.key_for(7, "Hello.")
 
 
-# --- reasoning (#23) --------------------------------------------------------
-
-
-def test_reasoning_off_changes_the_key():
-    assert cache.entry_key("Hello.", reasoning="off") != cache.entry_key("Hello.")
-
-
-def test_default_reasoning_keeps_a_key_written_before_the_setting():
-    assert cache.entry_key("Hello.", reasoning="default") == cache.entry_key("Hello.")
-
-
-def test_a_cache_written_with_reasoning_off_is_a_miss_under_default(tmp_path):
-    store = make(tmp_path, reasoning="off")
-    store.put(1, "Hello.", "สวัสดี")
-    store.save()
-
-    assert make(tmp_path, reasoning="off").load().get(1, "Hello.") == "สวัสดี"
-    assert make(tmp_path).load().get(1, "Hello.") is None
-
-
-def test_a_default_cache_is_a_miss_when_reasoning_is_off(tmp_path):
-    store = make(tmp_path)
-    store.put(1, "Hello.", "สวัสดี")
-    store.save()
-
-    assert make(tmp_path, reasoning="off").load().get(1, "Hello.") is None
-
-
 def test_stored_key_matches_key_for(tmp_path):
     store = make(tmp_path)
     assert store.key_for(1, "Hello.") == cache.entry_key("Hello.", model="m/x")

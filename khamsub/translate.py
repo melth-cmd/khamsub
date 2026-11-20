@@ -17,6 +17,7 @@ import os
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from . import __version__
@@ -109,6 +110,13 @@ def build_parser() -> argparse.ArgumentParser:
         "suggestions at the top of the report (nothing is applied)",
     )
     parser.add_argument(
+        "--reasoning", choices=config_module.REASONING_MODES, default=None,
+        help="Reasoning mode for new translation work: off (the first-pass "
+        "default), default (the provider's own setting), low or high. --fix, "
+        "--review and --repair --retranslate default to default; this flag "
+        "overrides both for one run",
+    )
+    parser.add_argument(
         "--strip-hi", action="store_true",
         help="Drop hearing-impaired descriptions ([door slams], (laughs), "
         "[MUSIC PLAYING]) from the source before translating, so they are never "
@@ -140,6 +148,43 @@ def bible_paths(source: Path) -> tuple[Path, Path]:
     return (
         srtio.sidecar_path(source, ".bible.md"),
         srtio.sidecar_path(source, ".glossary.toml"),
+    )
+
+
+def _with_reasoning(
+    settings: config_module.Settings, mode: str
+) -> config_module.Settings:
+    """A copy of settings whose [llm] reasoning is `mode`."""
+    return replace(settings, llm=replace(settings.llm, reasoning=mode))
+
+
+def run_reasoning(args, settings: config_module.Settings) -> str:
+    """The first-pass mode: the flag, else [llm] reasoning (off by default)."""
+    return args.reasoning if args.reasoning is not None else settings.llm.reasoning
+
+
+def correction_reasoning(args) -> str:
+    """--fix/--review/--retranslate: the flag, else reasoning on by default."""
+    if args.reasoning is not None:
+        return args.reasoning
+    return config_module.DEFAULT_FIX_REASONING
+
+
+def bible_reasoning(args) -> str:
+    """--bible-only: the flag, else reasoning on (a one-time quality pre-pass)."""
+    if args.reasoning is not None:
+        return args.reasoning
+    return config_module.DEFAULT_BIBLE_REASONING
+
+
+def warn_low_reasoning(mode: str) -> None:
+    """One line when the user asks for effort "low", which measured expensive."""
+    if mode != "low":
+        return
+    log.warning(
+        "reasoning effort \"low\" measured ~20x the thinking and 17x the cost of "
+        "the default on the example model; \"high\" or \"default\" is usually "
+        "cheaper"
     )
 
 
@@ -267,6 +312,7 @@ def translate_one(
     fix: bool = False,
     review: bool = False,
     strip_hi: bool = False,
+    fix_client: llm.ChatClient | None = None,
     progress: Callable[[pipeline.Progress], None] | None = None,
 ) -> tuple[pipeline.TranslatedFile, Path, Path | None]:
     """Translate a single file and write its report.
@@ -295,7 +341,7 @@ def translate_one(
         encoding=settings.output.encoding,
         strip_hi=strip_hi,
         model=settings.llm.model,
-        reasoning=settings.llm.reasoning,
+        fix_client=fix_client,
         size=settings.batch.size,
         context_before=settings.batch.context_before,
         context_after=settings.batch.context_after,
@@ -442,7 +488,9 @@ def _dry_run(
             f"{source.name}: {estimate.entries} {entries}{dropped} in "
             f"{estimate.batches} {batches}"
         )
-        _print_estimate(estimate, input_price, output_price, settings.llm.reasoning)
+        _print_estimate(
+            estimate, input_price, output_price, run_reasoning(args, settings)
+        )
     return status
 
 
@@ -490,9 +538,10 @@ def _print_estimate(
 
     reasoning_tokens = int(estimate.completion_tokens * REASONING_PER_OUTPUT)
     reasoning_cost = reasoning_tokens / 1e6 * output_price
+    label = "model default" if reasoning == "default" else f"effort {reasoning}"
     print(
-        "  reasoning  not estimated: a reasoning model bills thinking at the "
-        "output rate."
+        f"  reasoning  {label}: not estimated: a reasoning model bills thinking "
+        "at the output rate."
     )
     print(
         f"             At {REASONING_PER_OUTPUT:g}x the visible output (the figure "
@@ -648,6 +697,8 @@ def _repair_conflicts(args) -> list[str]:
     ):
         if value is not None:
             conflicts.append(flag)
+    if args.reasoning is not None and not args.retranslate:
+        conflicts.append("--reasoning (only with --retranslate)")
     return conflicts
 
 
@@ -699,7 +750,6 @@ def _cache_for(
         srtio.sidecar_path(source, ".cache.json"),
         model=settings.llm.model,
         glossary=notes_key,
-        reasoning=settings.llm.reasoning,
     ).load()
 
 
@@ -902,6 +952,10 @@ def _repair_main(args) -> int:
             )
             return 2
 
+        mode = correction_reasoning(args)
+        warn_low_reasoning(mode)
+        settings = _with_reasoning(settings, mode)
+
         if not args.dry_run:
             try:
                 client = config_module.build_client(settings)
@@ -1041,6 +1095,13 @@ def _dispatch(args: argparse.Namespace) -> int:
             print(f"error: {problem}", file=sys.stderr)
         return 2
 
+    run_mode = run_reasoning(args, settings)
+    modes = {bible_reasoning(args) if args.bible_only else run_mode}
+    if not args.bible_only and (args.fix or args.review):
+        modes.add(correction_reasoning(args))
+    for mode in modes:
+        warn_low_reasoning(mode)
+
     # The bible and glossary are read here, once, so a hand edit applies to this
     # run, and a broken glossary stops the run before a single paid call.
     notes: dict[Path, bible.Notes] = {}
@@ -1066,13 +1127,28 @@ def _dispatch(args: argparse.Namespace) -> int:
         print("warning: --limit/--range apply to every file given", file=sys.stderr)
 
     try:
-        client = config_module.build_client(settings)
+        if args.bible_only:
+            client = config_module.build_client(
+                _with_reasoning(settings, bible_reasoning(args))
+            )
+        else:
+            client = config_module.build_client(_with_reasoning(settings, run_mode))
     except (config_module.ConfigError, llm.AuthError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
     if args.bible_only:
         return _bible_only(args, sources, settings, client)
+
+    fix_client = client
+    if (args.fix or args.review) and correction_reasoning(args) != run_mode:
+        try:
+            fix_client = config_module.build_client(
+                _with_reasoning(settings, correction_reasoning(args))
+            )
+        except (config_module.ConfigError, llm.AuthError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
 
     status = 0
     failed_files = 0
@@ -1097,6 +1173,7 @@ def _dispatch(args: argparse.Namespace) -> int:
                     fix=args.fix,
                     review=args.review,
                     strip_hi=args.strip_hi,
+                    fix_client=fix_client,
                     progress=bar.update,
                 )
         except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest

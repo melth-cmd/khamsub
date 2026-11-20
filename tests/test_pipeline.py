@@ -314,25 +314,6 @@ def test_cache_can_be_disabled(tmp_path):
     assert not (tmp_path / "movie.cache.json").exists()
 
 
-def test_a_cache_from_a_different_reasoning_mode_is_not_reused(tmp_path):
-    from conftest import FakeClient
-
-    source = copied_fixture(tmp_path)
-    pipeline.translate_file(
-        FakeClient([REPLIES]), source, reasoning="off", sleep=lambda s: None
-    )
-
-    same_mode = FakeClient([REPLIES])
-    pipeline.translate_file(
-        same_mode, source, reasoning="off", sleep=lambda s: None
-    )
-    assert same_mode.call_count == 0
-
-    default_mode = FakeClient([REPLIES])
-    pipeline.translate_file(default_mode, source, sleep=lambda s: None)
-    assert default_mode.call_count == 1
-
-
 def test_only_uncached_entries_are_requested(tmp_path):
     from conftest import FakeClient
     from khamsub import cache as cache_module

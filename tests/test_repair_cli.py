@@ -190,6 +190,7 @@ def test_repair_refuses_a_file_without_thai(tmp_path, capsys):
         ["--range", "1-2"],
         ["--output", "x.srt"],
         ["--config", "x.toml"],
+        ["--reasoning", "high"],
         ["--where"],
         ["--init-config"],
     ],
@@ -345,13 +346,7 @@ def test_retranslate_dry_run_bills_no_reasoning_when_off(
     tmp_path, monkeypatch, capsys
 ):
     thai, _ = two_cue_pair(tmp_path)
-    monkeypatch.setattr(
-        config,
-        "load_settings",
-        lambda: config.settings_from_dict(
-            {"llm": {"model": "test/model", "reasoning": "off"}}
-        ),
-    )
+    monkeypatch.setattr(config, "load_settings", lambda: make_settings())
     monkeypatch.setattr(
         config,
         "build_client",
@@ -360,7 +355,9 @@ def test_retranslate_dry_run_bills_no_reasoning_when_off(
         ),
     )
 
-    status = translate.main(["--repair", str(thai), "--retranslate", "--dry-run"])
+    status = translate.main(
+        ["--repair", str(thai), "--retranslate", "--reasoning", "off", "--dry-run"]
+    )
 
     assert status == 0
     out = capsys.readouterr().out

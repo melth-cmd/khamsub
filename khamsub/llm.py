@@ -891,7 +891,7 @@ class OpenRouterClient:
 
         self.model = model
         self.temperature = temperature
-        # "off" disables a thinking model's reasoning (see complete()).
+        # "off", "low", "high" or "default"; see complete() for the body.
         self.reasoning = reasoning
         self._client = OpenAI(
             api_key=api_key or load_api_key(key_env),
@@ -921,6 +921,10 @@ class OpenRouterClient:
             # chat-completions field, so it goes through extra_body. A provider
             # that does not know it may reject the request; config documents it.
             request["extra_body"] = {"reasoning": {"enabled": False}}
+        elif self.reasoning in ("low", "high"):
+            request["extra_body"] = {"reasoning": {"effort": self.reasoning}}
+        # "default" sends nothing, so the provider's own default applies (on the
+        # example model: enabled, effort high).
 
         try:
             response = self._client.chat.completions.create(**request)

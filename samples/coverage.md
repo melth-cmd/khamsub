@@ -15,11 +15,12 @@ do well unaided; the bible is a later upgrade, not a requirement.
 ```
 
 - 60 cues, 59 sent (cue 48 is dropped: nothing to translate), 1 batch.
-- About 1,400 prompt tokens. Paired runs on 2026-11-20, same model and sample:
-  `reasoning = "off"` used 3,143 tokens (2,109 in, 1,034 out, 0 reasoning),
-  $0.0009 and 9s, with one flag (cue 37, `english_left`); the default used
-  11,577 tokens (1,435 in, 10,142 out, 9,096 reasoning), $0.0031 and 75s, with
-  nothing flagged. Treat the default's estimate as a floor.
+- About 1,400 prompt tokens. The command above now runs with reasoning **off**
+  (the first-pass default). Paired runs on 2026-11-20, same model and sample:
+  off used 3,143 tokens (2,109 in, 1,034 out, 0 reasoning), $0.0009 and 9s, with
+  one flag (cue 37, `english_left`); `--reasoning default` used 11,577 tokens
+  (1,435 in, 10,142 out, 9,096 reasoning), $0.0031 and 75s, with nothing flagged.
+  Treat the reasoning estimate as a floor.
 - Outputs land next to the input and are gitignored: `coverage.th.srt`,
   `coverage.cache.json`, `coverage.report.txt`.
 - Do not pass `--bible` or a glossary when scoring models. Same prompt version,
