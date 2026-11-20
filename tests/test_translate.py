@@ -8,9 +8,11 @@ from pathlib import Path
 import pytest
 
 from khamsub import bible
+from khamsub import cache
 from khamsub import config
 from khamsub import glossary
 from khamsub import paths
+from khamsub import pipeline
 from khamsub import srtio
 from khamsub import translate
 from khamsub import verify
@@ -1044,6 +1046,31 @@ def test_fix_and_review_fix_then_advise(project, fake):
     assert "Suggestions" not in report
 
 
+# --- reasoning (#23) --------------------------------------------------------
+
+
+def test_a_run_with_reasoning_off_writes_its_own_cache_key(project, fake):
+    (project / "config.toml").write_text(
+        '[llm]\nmodel = "test/model"\nreasoning = "off"\n', encoding="utf-8"
+    )
+    fake.queue(REPLIES)
+    status = translate.main(
+        [str(project / "sample.en.srt"), "--config", str(project / "config.toml")]
+    )
+
+    assert status == 0
+    data = json.loads((project / "sample.cache.json").read_text(encoding="utf-8"))
+    assert data["entries"]["1"]["key"] == cache.entry_key(
+        "Hello there.", model="test/model", reasoning="off"
+    )
+
+
+def test_the_repair_retranslate_cache_carries_the_reasoning_mode(tmp_path):
+    settings = config.settings_from_dict({"llm": {"reasoning": "off"}})
+    store = translate._cache_for(tmp_path / "movie.en.srt", settings, bible.Notes())
+    assert store.reasoning == "off"
+
+
 # --- --strip-hi (flag, not a config setting) --------------------------------
 
 HI_SRT = """\
@@ -1150,6 +1177,32 @@ def test_a_dry_run_uses_the_published_price(project, monkeypatch, capsys):
     assert status == 0
     assert "$" in out
     assert "input" in out and "output" in out and "reasoning" in out
+    assert "2.3x" in out  # the default still shows the reasoning illustration
+    assert "7x-11x" in out  # and says the illustration is a floor
+
+
+def test_print_estimate_with_reasoning_off_bills_no_thinking(capsys):
+    estimate = pipeline.Estimate(
+        prompt_tokens=1000, completion_tokens=500, cost_usd=0.001
+    )
+    translate._print_estimate(estimate, 1.0, 2.0, reasoning="off")
+    out = capsys.readouterr().out
+
+    assert "off: the request disables it" in out
+    assert "2.3x" not in out
+    assert "excluding reasoning" not in out
+    assert any(
+        line.startswith("  total") and "$0.0010" in line for line in out.splitlines()
+    )
+
+
+def test_print_estimate_off_without_a_price_still_reports_unknown(capsys):
+    estimate = pipeline.Estimate(prompt_tokens=10, completion_tokens=5)
+    translate._print_estimate(estimate, 0.0, 0.0, reasoning="off")
+    out = capsys.readouterr().out
+
+    assert "off: the request disables it" in out
+    assert "cost unknown" in out
 
 
 def test_a_dry_run_falls_back_to_the_configured_price(project, capsys):

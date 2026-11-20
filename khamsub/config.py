@@ -29,6 +29,11 @@ DEFAULT_PATH = paths.current_config()
 # data next to config.py, so it travels with the wheel.
 TEMPLATE_PATH = Path(__file__).with_name("config.toml")
 IMPLEMENTED_WIRE_FORMATS = ("tagged",)
+# Reasoning control for a thinking model. "default" leaves the request exactly
+# as it was; "off" asks the API to stop thinking, which is what turns most of a
+# reasoning model's bill off. Effort values are deliberately not offered: on the
+# example model "low" measured ~20x the thinking of the default.
+REASONING_MODES = ("default", "off")
 # A fresh install with no config.toml still needs a model to estimate with.
 DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash-1017"
 
@@ -58,6 +63,7 @@ class LLMSettings:
     timeout_s: float = 120.0
     max_retries: int = 3
     wire_format: str = "tagged"
+    reasoning: str = "default"
     input_usd_per_mtok: float = 0.30
     output_usd_per_mtok: float = 1.20
     # Extra request headers, for OpenAI-compatible providers that ask for them.
@@ -212,8 +218,8 @@ def settings_from_dict(data: Mapping[str, Any], path: Path | None = None) -> Set
         llm_section,
         {
             "base_url", "key_env", "model", "temperature", "timeout_s",
-            "max_retries", "wire_format", "input_usd_per_mtok", "output_usd_per_mtok",
-            "extra_headers",
+            "max_retries", "wire_format", "reasoning", "input_usd_per_mtok",
+            "output_usd_per_mtok", "extra_headers",
         },
         "llm",
     )
@@ -222,6 +228,12 @@ def settings_from_dict(data: Mapping[str, Any], path: Path | None = None) -> Set
         raise ConfigError(
             f"[llm] wire_format {wire_format!r} is not implemented yet; "
             f"use one of {', '.join(IMPLEMENTED_WIRE_FORMATS)}"
+        )
+    reasoning = _string(llm_section, "reasoning", "default", "llm")
+    if reasoning not in REASONING_MODES:
+        raise ConfigError(
+            f"[llm] reasoning {reasoning!r} is not supported; use one of "
+            f"{', '.join(REASONING_MODES)} (\"off\" disables thinking)"
         )
 
     llm_settings = LLMSettings(
@@ -232,6 +244,7 @@ def settings_from_dict(data: Mapping[str, Any], path: Path | None = None) -> Set
         timeout_s=_number(llm_section, "timeout_s", 120.0, "llm", 1.0),
         max_retries=_integer(llm_section, "max_retries", 3, "llm", 0),
         wire_format=wire_format,
+        reasoning=reasoning,
         input_usd_per_mtok=_number(
             llm_section, "input_usd_per_mtok", 0.30, "llm", 0.0
         ),
@@ -421,4 +434,5 @@ def build_client(settings: Settings, api_key: str | None = None) -> llm.OpenRout
         timeout_s=settings.llm.timeout_s,
         key_env=settings.llm.key_env,
         extra_headers=settings.llm.extra_headers,
+        reasoning=settings.llm.reasoning,
     )

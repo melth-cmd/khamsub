@@ -7,8 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- `[llm] reasoning = "off"` asks the API to stop a thinking model from spending
+  reasoning tokens, which can be most of a run's bill. On `samples/coverage.srt`
+  the same model spent 1,034 output tokens (none on reasoning), $0.0009 and 9s
+  with it off, against 10,142 output tokens (9,096 reasoning), $0.0031 and 75s
+  by default; the off run flagged one line (a bare `A` left in English) against
+  none by default. The mode is part of the cache key, so
+  switching it re-translates the file once, and `--dry-run` then bills only the
+  visible output. Effort values such as `"low"` are refused: on the example
+  model they cost more than the default. It is an OpenRouter parameter, so
+  another OpenAI-compatible provider may reject it. (#23)
+
 ### Changed
 
+- `--dry-run` says its 2.3x reasoning illustration is a floor: two
+  feature-length files measured 7x-11x.
 - Hearing-impaired description stripping is now the `--strip-hi` flag instead of
   the `[cleanup] strip_hi` config setting, so it is chosen per run and is
   visible in the command you keep. It works with `--dry-run` and `--bible-only`,

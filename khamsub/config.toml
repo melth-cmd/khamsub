@@ -10,6 +10,11 @@ timeout_s = 120
 max_retries = 3
 wire_format = "tagged"           # only "tagged" is implemented
 
+# A thinking model's reasoning is billed as output and can be most of the bill.
+# "default" leaves it to the model; "off" asks the API to disable it. Effort
+# values such as "low" are not offered: on the example model they cost more.
+reasoning = "default"
+
 # USD per million tokens, used only for --dry-run cost estimates when the
 # provider's published price cannot be fetched. OpenRouter is asked for the live
 # price first (its list price changes by time of day), and a real run reports the

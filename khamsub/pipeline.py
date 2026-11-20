@@ -649,6 +649,7 @@ def translate_file(
     strip_hi: bool = False,
     use_cache: bool = True,
     model: str = "",
+    reasoning: str = "default",
     bible: str = "",
     terms: Sequence[glossary.Term] = (),
     fix: bool = False,
@@ -680,6 +681,7 @@ def translate_file(
             srtio.sidecar_path(source, ".cache.json"),
             model=model,
             glossary=notes_key,
+            reasoning=reasoning,
         ).load()
 
     result = translate_subtitles(

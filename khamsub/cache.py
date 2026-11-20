@@ -10,11 +10,14 @@ What makes an entry reusable is a single key per entry, a hash of:
   - the model that translated it
   - the prompt version
   - the glossary entries that applied to that entry
+  - the reasoning mode, when it is "off" and not the default
 
 The key is stored with the entry, so a stale line is simply a miss: changing one
 line of a subtitle, or one glossary term, re-translates only the lines affected.
 Changing the model or the prompt also only misses, instead of throwing the file
-away. Old caches (format version 1) are ignored and start empty.
+away. A non-default reasoning mode also only misses, so switching reasoning off
+re-translates the file instead of re-serving lines that paid for it. Old caches
+(format version 1) are ignored and start empty.
 
 Who decides which glossary entries apply to a line is `glossary.py` (Phase 3).
 Until then the cache takes a `glossary` callable that returns a fingerprint for
@@ -55,17 +58,20 @@ def entry_key(
     model: str = "",
     prompt_version: int = llm.PROMPT_VERSION,
     glossary: str = "",
+    reasoning: str = "",
 ) -> str:
     """The cache key for one entry.
 
     The index is deliberately not part of it: if a line keeps its text but moves
-    to another SRT number, the translation is still good.
+    to another SRT number, the translation is still good. `reasoning` is only
+    appended when it is a non-default mode, so a cache written before this
+    setting existed keeps the same key.
     """
-    payload = json.dumps(
-        [FORMAT_VERSION, source, model, prompt_version, glossary],
-        ensure_ascii=False,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:KEY_CHARS]
+    payload: list = [FORMAT_VERSION, source, model, prompt_version, glossary]
+    if reasoning and reasoning != "default":
+        payload.append(reasoning)
+    encoded = json.dumps(payload, ensure_ascii=False)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:KEY_CHARS]
 
 
 @dataclass(frozen=True)
@@ -86,11 +92,13 @@ class Cache:
         model: str = "",
         prompt_version: int = llm.PROMPT_VERSION,
         glossary: GlossaryKey | None = None,
+        reasoning: str = "default",
     ):
         self.path = Path(path)
         self.model = model
         self.prompt_version = prompt_version
         self._glossary_key = glossary or no_glossary
+        self.reasoning = reasoning
         self._entries: dict[int, CacheEntry] = {}
         self._dirty = False
 
@@ -107,6 +115,7 @@ class Cache:
             model=self.model,
             prompt_version=self.prompt_version,
             glossary=self._glossary_key(index, source),
+            reasoning=self.reasoning,
         )
 
     def load(self) -> "Cache":

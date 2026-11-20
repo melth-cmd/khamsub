@@ -882,6 +882,7 @@ class OpenRouterClient:
         timeout_s: float = 120,
         key_env: str = DEFAULT_KEY_ENV,
         extra_headers: Mapping[str, str] | None = None,
+        reasoning: str = "default",
     ):
         try:
             from openai import OpenAI
@@ -890,6 +891,8 @@ class OpenRouterClient:
 
         self.model = model
         self.temperature = temperature
+        # "off" disables a thinking model's reasoning (see complete()).
+        self.reasoning = reasoning
         self._client = OpenAI(
             api_key=api_key or load_api_key(key_env),
             base_url=base_url,
@@ -908,12 +911,19 @@ class OpenRouterClient:
         """
         import openai
 
+        request: dict = {
+            "model": self.model,
+            "messages": list(messages),
+            "temperature": self.temperature if temperature is None else temperature,
+        }
+        if self.reasoning == "off":
+            # OpenRouter's switch for a thinking model. It is not an OpenAI
+            # chat-completions field, so it goes through extra_body. A provider
+            # that does not know it may reject the request; config documents it.
+            request["extra_body"] = {"reasoning": {"enabled": False}}
+
         try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=list(messages),
-                temperature=self.temperature if temperature is None else temperature,
-            )
+            response = self._client.chat.completions.create(**request)
         except openai.RateLimitError as exc:
             retry_after = _retry_after(exc)
             raise RateLimited(

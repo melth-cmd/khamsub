@@ -295,6 +295,7 @@ def translate_one(
         encoding=settings.output.encoding,
         strip_hi=strip_hi,
         model=settings.llm.model,
+        reasoning=settings.llm.reasoning,
         size=settings.batch.size,
         context_before=settings.batch.context_before,
         context_after=settings.batch.context_after,
@@ -441,25 +442,27 @@ def _dry_run(
             f"{source.name}: {estimate.entries} {entries}{dropped} in "
             f"{estimate.batches} {batches}"
         )
-        _print_estimate(estimate, input_price, output_price)
+        _print_estimate(estimate, input_price, output_price, settings.llm.reasoning)
     return status
 
 
 # Reasoning tokens per visible output token, measured on samples/coverage.srt:
 # one 6-cue run spent 347 reasoning tokens for 148 visible ones. It is only an
 # illustration, not a prediction -- a reasoning model decides this for itself and
-# the figure moves with the prompt and the model -- but the estimate should not
-# quietly ignore what was 70% of the bill on that run.
+# the figure moves with the prompt and the model (the two feature-length files in
+# #23 measured 7x and 11.4x). `reasoning = "off"` in [llm] removes the guess
+# instead of scaling it: the estimate then bills only the visible output.
 REASONING_PER_OUTPUT = 2.3
 
 
 def _print_estimate(
-    estimate: pipeline.Estimate, input_price: float, output_price: float
+    estimate: pipeline.Estimate,
+    input_price: float,
+    output_price: float,
+    reasoning: str = "default",
 ) -> None:
     """The estimate, split so the reasoning gap is visible instead of hidden."""
     priced = bool(input_price or output_price)
-    reasoning_tokens = int(estimate.completion_tokens * REASONING_PER_OUTPUT)
-    reasoning_cost = reasoning_tokens / 1e6 * output_price
 
     def money(tokens: int, price: float) -> str:
         if not price:
@@ -474,21 +477,35 @@ def _print_estimate(
         f"  output     ~{estimate.completion_tokens:,} tokens"
         f"{money(estimate.completion_tokens, output_price)}"
     )
+    if reasoning == "off":
+        print("  reasoning  off: the request disables it, so none is billed")
+        if priced:
+            print(f"  total      ~${estimate.cost_usd:.4f}")
+        else:
+            print(
+                "  total      cost unknown: no published price for this model and "
+                "none configured"
+            )
+        return
+
+    reasoning_tokens = int(estimate.completion_tokens * REASONING_PER_OUTPUT)
+    reasoning_cost = reasoning_tokens / 1e6 * output_price
     print(
         "  reasoning  not estimated: a reasoning model bills thinking at the "
         "output rate."
     )
     print(
-        f"             At {REASONING_PER_OUTPUT:g}x the visible output (what "
-        "samples/coverage.srt spent)"
+        f"             At {REASONING_PER_OUTPUT:g}x the visible output (the figure "
+        "measured on samples/coverage.srt)"
     )
+    print("             that is a floor: two feature-length films measured 7x-11x.")
     if output_price:
         print(
-            f"             that is ~{reasoning_tokens:,} tokens, "
+            f"             At that ratio, ~{reasoning_tokens:,} tokens, "
             f"~${reasoning_cost:.4f} more. Your model may differ."
         )
     else:
-        print(f"             that is ~{reasoning_tokens:,} more output tokens.")
+        print(f"             At that ratio, ~{reasoning_tokens:,} more output tokens.")
     if priced:
         print(
             f"  total      ~${estimate.cost_usd:.4f} excluding reasoning, "
@@ -682,6 +699,7 @@ def _cache_for(
         srtio.sidecar_path(source, ".cache.json"),
         model=settings.llm.model,
         glossary=notes_key,
+        reasoning=settings.llm.reasoning,
     ).load()
 
 
@@ -768,7 +786,7 @@ def _print_retranslate_estimate(
         f"Retranslation estimate: {estimate.entries} candidate(s) in "
         f"{estimate.batches} batch(es)"
     )
-    _print_estimate(estimate, price[0], price[1])
+    _print_estimate(estimate, price[0], price[1], settings.llm.reasoning)
 
 
 def _repair_main(args) -> int:

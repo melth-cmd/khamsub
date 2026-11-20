@@ -258,6 +258,43 @@ def test_boolean_is_not_accepted_as_a_number(tmp_path):
         config.load_settings(write(tmp_path, "[llm]\ntemperature = true\n"))
 
 
+# --- reasoning (#23) --------------------------------------------------------
+
+
+def test_reasoning_defaults_to_letting_the_model_decide():
+    assert config.settings_from_dict({}).llm.reasoning == "default"
+
+
+def test_reasoning_off_is_read_from_the_file(tmp_path):
+    settings = config.load_settings(write(tmp_path, '[llm]\nreasoning = "off"\n'))
+    assert settings.llm.reasoning == "off"
+
+
+@pytest.mark.parametrize("value", ["low", "medium", "high", "on", "Off", ""])
+def test_reasoning_refuses_anything_but_default_or_off(tmp_path, value):
+    with pytest.raises(config.ConfigError, match="reasoning"):
+        config.load_settings(write(tmp_path, f'[llm]\nreasoning = "{value}"\n'))
+
+
+def test_reasoning_must_be_a_string(tmp_path):
+    with pytest.raises(config.ConfigError, match="must be a string"):
+        config.load_settings(write(tmp_path, "[llm]\nreasoning = false\n"))
+
+
+def test_build_client_passes_reasoning(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    captured: dict = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(llm, "OpenRouterClient", FakeClient)
+    settings = config.settings_from_dict({"llm": {"model": "m/x", "reasoning": "off"}})
+    config.build_client(settings)
+    assert captured["reasoning"] == "off"
+
+
 # --- client -----------------------------------------------------------------
 
 

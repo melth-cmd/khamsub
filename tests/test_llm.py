@@ -387,6 +387,7 @@ def client_raising(exc: Exception) -> llm.OpenRouterClient:
     client = object.__new__(llm.OpenRouterClient)
     client.model = "test/model"
     client.temperature = 0.25
+    client.reasoning = "default"
 
     def create(**kwargs):
         raise exc
@@ -406,6 +407,7 @@ def client_returning(
     client = object.__new__(llm.OpenRouterClient)
     client.model = "test/model"
     client.temperature = 0.25
+    client.reasoning = "default"
     extra = {} if provider is None else {"provider": provider}
     response = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
@@ -418,6 +420,28 @@ def client_returning(
         chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **kw: response))
     )
     return client
+
+
+def client_capturing(reasoning: str = "default"):
+    """An OpenRouterClient whose SDK call records the request kwargs."""
+    client = object.__new__(llm.OpenRouterClient)
+    client.model = "test/model"
+    client.temperature = 0.25
+    client.reasoning = reasoning
+    captured: dict = {}
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="[1] สวัสดี"))],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+    )
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return response
+
+    client._client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    return client, captured
 
 
 def test_complete_returns_text_and_usage():
@@ -434,6 +458,41 @@ def test_complete_reads_the_provider_that_served_it():
 
 def test_complete_without_a_provider_leaves_it_empty():
     assert client_returning("[1] สวัสดี").complete([]).provider == ""
+
+
+# --- reasoning control (#23) ------------------------------------------------
+
+
+def test_complete_disables_reasoning_when_configured():
+    client, request = client_capturing("off")
+    client.complete([{"role": "user", "content": "x"}])
+    assert request["extra_body"] == {"reasoning": {"enabled": False}}
+
+
+def test_complete_sends_no_reasoning_block_by_default():
+    client, request = client_capturing()
+    client.complete([{"role": "user", "content": "x"}])
+    assert "extra_body" not in request
+    assert set(request) == {"model", "messages", "temperature"}
+
+
+def test_reasoning_off_leaves_the_rest_of_the_body_alone():
+    client, request = client_capturing("off")
+    client.complete([{"role": "user", "content": "x"}], temperature=0.1)
+    assert request["model"] == "test/model"
+    assert request["temperature"] == 0.1
+    assert request["messages"] == [{"role": "user", "content": "x"}]
+
+
+def test_the_client_keeps_the_reasoning_setting(monkeypatch):
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+    client = llm.OpenRouterClient(model="m/x", api_key="test-key", reasoning="off")
+    assert client.reasoning == "off"
+    assert llm.OpenRouterClient(model="m/x", api_key="test-key").reasoning == "default"
 
 
 def test_rate_limit_becomes_rate_limited_with_retry_after():
@@ -533,6 +592,7 @@ def test_client_sets_timeout_and_leaves_retrying_to_us(monkeypatch):
 def test_empty_choices_is_bad_response():
     client = object.__new__(llm.OpenRouterClient)
     client.model, client.temperature = "test/model", 0.25
+    client.reasoning = "default"
     response = SimpleNamespace(choices=[], usage=None)
     client._client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **kw: response))

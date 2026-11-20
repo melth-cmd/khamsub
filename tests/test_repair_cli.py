@@ -341,6 +341,34 @@ def test_retranslate_dry_run_estimates_without_a_client(
     assert not thai.with_suffix(".repair-report.txt").exists()
 
 
+def test_retranslate_dry_run_bills_no_reasoning_when_off(
+    tmp_path, monkeypatch, capsys
+):
+    thai, _ = two_cue_pair(tmp_path)
+    monkeypatch.setattr(
+        config,
+        "load_settings",
+        lambda: config.settings_from_dict(
+            {"llm": {"model": "test/model", "reasoning": "off"}}
+        ),
+    )
+    monkeypatch.setattr(
+        config,
+        "build_client",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("a dry run must not build a client")
+        ),
+    )
+
+    status = translate.main(["--repair", str(thai), "--retranslate", "--dry-run"])
+
+    assert status == 0
+    out = capsys.readouterr().out
+    assert "Retranslation estimate:" in out
+    assert "off: the request disables it" in out
+    assert "2.3x" not in out
+
+
 def test_retranslate_with_no_candidates_needs_no_config(tmp_path, monkeypatch):
     thai, _ = repair_pair(tmp_path)
 
