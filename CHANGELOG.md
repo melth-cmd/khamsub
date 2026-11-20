@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-20
+
 ### Added
 
 - `--reasoning MODE` chooses the reasoning mode for one run: `off`, `default`
@@ -34,6 +36,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   visible in the command you keep. It works with `--dry-run` and `--bible-only`,
   and `--repair` rejects it. A config that still has `[cleanup] strip_hi` keeps
   loading: one warning points at the flag and the line is ignored.
+- The `--bible-only` summary reports the pre-pass usage (input/output, reasoning,
+  cached tokens and the exact cost) instead of only a token total, and a reply
+  that is not valid JSON logs that call's tokens and cost before it is asked
+  again, so a failed pre-pass is visible in the bill.
 
 ### Fixed
 
@@ -251,7 +257,8 @@ First public release.
 - Any OpenAI-compatible provider through `[llm]`.
 - API key from the environment only; exit codes 0, 1 and 2.
 
-[Unreleased]: https://github.com/melth-cmd/khamsub/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/melth-cmd/khamsub/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/melth-cmd/khamsub/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/melth-cmd/khamsub/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/melth-cmd/khamsub/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/melth-cmd/khamsub/compare/v0.2.1...v0.3.0
