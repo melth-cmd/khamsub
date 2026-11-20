@@ -35,6 +35,3 @@ context_after = 2
 encoding = "utf-8"               # "utf-8-sig" if your player garbles Thai
 bilingual = false                # English line above Thai
 strip_en_suffix = true           # Movie.en.srt -> Movie.th.srt
-
-[cleanup]
-strip_hi = false                 # drop [sound effects] and (descriptions)

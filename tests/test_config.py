@@ -29,7 +29,7 @@ def test_empty_mapping_gives_documented_defaults():
     assert settings.batch.size == 60
     assert settings.batch.context_before == 4
     assert settings.output.encoding == "utf-8"
-    assert settings.cleanup.strip_hi is False
+    assert not hasattr(settings, "cleanup")
 
 
 def test_missing_default_file_is_not_fatal(monkeypatch, tmp_path):
@@ -165,8 +165,6 @@ context_before = 0
 [output]
 encoding = "utf-8-sig"
 strip_en_suffix = false
-[cleanup]
-strip_hi = true
 """,
     )
     settings = config.load_settings(path)
@@ -176,7 +174,6 @@ strip_hi = true
     assert settings.batch.context_before == 0
     assert settings.output.encoding == "utf-8-sig"
     assert settings.output.strip_en_suffix is False
-    assert settings.cleanup.strip_hi is True
     assert settings.path == path
 
 
@@ -196,6 +193,33 @@ def test_unknown_section_is_ignored_with_a_warning(tmp_path, caplog):
     with caplog.at_level("WARNING"):
         config.load_settings(write(tmp_path, "[nonsense]\nx = 1\n"))
     assert "nonsense" in caplog.text
+
+
+# --- deprecated settings ----------------------------------------------------
+
+
+def test_old_cleanup_strip_hi_warns_once_and_still_loads(tmp_path, caplog):
+    """The setting moved to --strip-hi; an old config must not fail or double-warn."""
+    with caplog.at_level("WARNING"):
+        settings = config.load_settings(write(tmp_path, "[cleanup]\nstrip_hi = true\n"))
+    assert "--strip-hi" in caplog.text
+    assert "no longer a config setting" in caplog.text
+    assert len(caplog.records) == 1
+    assert settings.batch.size == 60
+    assert not hasattr(settings, "cleanup")
+
+
+def test_other_cleanup_keys_are_still_reported(tmp_path, caplog):
+    with caplog.at_level("WARNING"):
+        config.load_settings(write(tmp_path, "[cleanup]\nstrip_sdh = true\n"))
+    assert "cleanup" in caplog.text
+    assert "strip_sdh" in caplog.text
+
+
+def test_cleanup_strip_hi_value_is_not_applied(tmp_path):
+    """A leftover true must not strip anything: only the flag does."""
+    settings = config.load_settings(write(tmp_path, "[cleanup]\nstrip_hi = true\n"))
+    assert not hasattr(settings, "cleanup")
 
 
 def test_broken_toml_raises_with_location(tmp_path):

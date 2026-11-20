@@ -158,13 +158,18 @@ can be compared.
     khamsub "Show.en.srt" -v
       Add per-batch log detail. The progress line is shown either way.
 
+    khamsub "Show.en.srt" --strip-hi
+      Drop sound descriptions like `[door slams]` and `(laughs)` before
+      translating, so they are never sent. A line with nothing else in it is
+      left out of the Thai file. Names in brackets, like `[Maya]`, are kept.
+
     khamsub "Show.en.srt" --force
       Also accept inputs that look translated (`*.th.srt`). With `--bible-only`
       it rebuilds existing bible/glossary files, losing hand edits.
 
-To drop sound descriptions like `[door slams]` and `(laughs)` before
-translating, set `strip_hi = true` in `[cleanup]` of your config file. That is a
-config setting, not a command.
+`--strip-hi` also works with `--dry-run` (the estimate shows the dropped lines)
+and with `--bible-only`. An older config that still has `[cleanup] strip_hi`
+keeps loading: one warning says to use the flag, and the setting is ignored.
 
 ## Files it makes
 

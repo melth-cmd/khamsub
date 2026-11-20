@@ -109,6 +109,12 @@ def build_parser() -> argparse.ArgumentParser:
         "suggestions at the top of the report (nothing is applied)",
     )
     parser.add_argument(
+        "--strip-hi", action="store_true",
+        help="Drop hearing-impaired descriptions ([door slams], (laughs), "
+        "[MUSIC PLAYING]) from the source before translating, so they are never "
+        "sent or paid for; an entry left with no words is dropped",
+    )
+    parser.add_argument(
         "--force", action="store_true",
         help="Also accept inputs that look like existing translations (*.th.srt), "
         "rebuild bible/glossary files that already exist, and for --repair "
@@ -260,6 +266,7 @@ def translate_one(
     notes: bible.Notes | None = None,
     fix: bool = False,
     review: bool = False,
+    strip_hi: bool = False,
     progress: Callable[[pipeline.Progress], None] | None = None,
 ) -> tuple[pipeline.TranslatedFile, Path, Path | None]:
     """Translate a single file and write its report.
@@ -286,7 +293,7 @@ def translate_one(
         source,
         target,
         encoding=settings.output.encoding,
-        strip_hi=settings.cleanup.strip_hi,
+        strip_hi=strip_hi,
         model=settings.llm.model,
         size=settings.batch.size,
         context_before=settings.batch.context_before,
@@ -416,7 +423,7 @@ def _dry_run(
         loaded = srtio.load_srt(source)
         estimate = pipeline.estimate(
             loaded.subtitles,
-            strip_hi=settings.cleanup.strip_hi,
+            strip_hi=args.strip_hi,
             size=settings.batch.size,
             context_before=settings.batch.context_before,
             context_after=settings.batch.context_after,
@@ -524,7 +531,7 @@ def _bible_only(
         try:
             loaded = srtio.load_srt(source)
             prepared = pipeline.prepare(
-                loaded.subtitles, strip_hi=settings.cleanup.strip_hi
+                loaded.subtitles, strip_hi=args.strip_hi
             )
             selected = batcher.select_range(
                 prepared.entries, limit=args.limit, range_=args.range_
@@ -611,6 +618,7 @@ def _repair_conflicts(args) -> list[str]:
     for flag, value in (
         ("--fix", args.fix),
         ("--review", args.review),
+        ("--strip-hi", args.strip_hi),
         ("--bible-only", args.bible_only),
     ):
         if value:
@@ -1070,6 +1078,7 @@ def _dispatch(args: argparse.Namespace) -> int:
                     notes=notes.get(source),
                     fix=args.fix,
                     review=args.review,
+                    strip_hi=args.strip_hi,
                     progress=bar.update,
                 )
         except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest

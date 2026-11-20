@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Hearing-impaired description stripping is now the `--strip-hi` flag instead of
+  the `[cleanup] strip_hi` config setting, so it is chosen per run and is
+  visible in the command you keep. It works with `--dry-run` and `--bible-only`,
+  and `--repair` rejects it. A config that still has `[cleanup] strip_hi` keeps
+  loading: one warning points at the flag and the line is ignored.
+
 ### Fixed
 
 - `--repair` removes a line-final full stop instead of only reporting it, so a

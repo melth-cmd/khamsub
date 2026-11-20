@@ -184,6 +184,7 @@ def test_repair_refuses_a_file_without_thai(tmp_path, capsys):
     [
         ["--fix"],
         ["--review"],
+        ["--strip-hi"],
         ["--bible-only"],
         ["--limit", "1"],
         ["--range", "1-2"],

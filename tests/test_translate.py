@@ -1044,6 +1044,95 @@ def test_fix_and_review_fix_then_advise(project, fake):
     assert "Suggestions" not in report
 
 
+# --- --strip-hi (flag, not a config setting) --------------------------------
+
+HI_SRT = """\
+1
+00:00:01,000 --> 00:00:03,500
+[door slams]
+
+2
+00:00:04,000 --> 00:00:06,250
+Hello there. (laughs)
+
+3
+00:00:07,000 --> 00:00:09,000
+How are you?
+"""
+
+
+def hi_source(project: Path) -> Path:
+    path = project / "hi.en.srt"
+    path.write_text(HI_SRT, encoding="utf-8")
+    return path
+
+
+def test_strip_hi_removes_descriptions_before_the_call(project, fake, capsys):
+    fake.queue("[2] สวัสดี\n[3] สบายดีไหม")
+    status = run(project, fake, hi_source(project), "--strip-hi")
+    captured = capsys.readouterr()
+
+    out = srtio.load_srt(project / "hi.th.srt")
+    request = fake.calls[0][1]["content"]
+    assert status == 0
+    assert "[door slams]" not in request
+    assert "(laughs)" not in request
+    # The bracket-only entry is gone; the others keep their original indexes.
+    assert [cue.index for cue in out.subtitles] == [2, 3]
+    assert [cue.content for cue in out.subtitles] == ["สวัสดี", "สบายดีไหม"]
+    assert "1 dropped" in captured.out
+
+
+def test_without_the_flag_the_descriptions_are_sent(project, fake):
+    fake.queue("[1] [door slams]\n[2] สวัสดี (laughs)\n[3] สบายดีไหม")
+    status = run(project, fake, hi_source(project))
+
+    request = fake.calls[0][1]["content"]
+    assert status == 0
+    assert "[door slams]" in request
+    assert len(srtio.load_srt(project / "hi.th.srt").subtitles) == 3
+
+
+def test_the_old_cleanup_setting_no_longer_strips_anything(project, fake, caplog):
+    """strip_hi moved to a flag: a leftover config line warns and is ignored."""
+    (project / "config.toml").write_text(
+        '[llm]\nmodel = "test/model"\n[cleanup]\nstrip_hi = true\n', encoding="utf-8"
+    )
+    fake.queue("[1] [door slams]\n[2] สวัสดี (laughs)\n[3] สบายดีไหม")
+
+    with caplog.at_level("WARNING"):
+        status = run(project, fake, hi_source(project))
+
+    assert status == 0
+    assert "[door slams]" in fake.calls[0][1]["content"]
+    assert "--strip-hi" in caplog.text
+
+
+def test_dry_run_with_strip_hi_counts_the_dropped_entry(project, fake, capsys):
+    status = translate.main(
+        [
+            str(hi_source(project)),
+            "--dry-run",
+            "--strip-hi",
+            "--config",
+            str(project / "config.toml"),
+        ]
+    )
+
+    assert status == 0
+    assert "hi.en.srt: 2 entries, 1 dropped" in capsys.readouterr().out
+
+
+def test_bible_only_with_strip_hi_reads_the_cleaned_script(project, fake):
+    fake.queue(BIBLE_REPLY)
+    status = run(project, fake, hi_source(project), "--bible-only", "--strip-hi")
+
+    request = fake.calls[0][1]["content"]
+    assert status == 0
+    assert "[door slams]" not in request
+    assert "(laughs)" not in request
+
+
 # --- cost reporting ---------------------------------------------------------
 
 

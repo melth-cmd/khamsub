@@ -79,16 +79,10 @@ class OutputSettings:
 
 
 @dataclass(frozen=True)
-class CleanupSettings:
-    strip_hi: bool = False
-
-
-@dataclass(frozen=True)
 class Settings:
     llm: LLMSettings = field(default_factory=LLMSettings)
     batch: BatchSettings = field(default_factory=BatchSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
-    cleanup: CleanupSettings = field(default_factory=CleanupSettings)
     path: Path | None = None
 
 
@@ -191,8 +185,28 @@ def _headers(section: Mapping[str, Any], key: str, name: str) -> dict[str, str]:
 # --- parsing ----------------------------------------------------------------
 
 
+def _deprecated(data: Mapping[str, Any]) -> None:
+    """Settings that moved to a flag: accepted once, then ignored.
+
+    `[cleanup] strip_hi` is now the --strip-hi flag. An existing config must
+    keep loading, so the stale table is named once instead of being dropped
+    silently; nothing is applied from it.
+    """
+    section = data.get("cleanup")
+    if not isinstance(section, Mapping):
+        return
+    if "strip_hi" in section:
+        log.warning(
+            "[cleanup] strip_hi is no longer a config setting; use the --strip-hi "
+            "flag instead (this line is ignored)"
+        )
+        return
+    _check_keys(section, set(), "cleanup")
+
+
 def settings_from_dict(data: Mapping[str, Any], path: Path | None = None) -> Settings:
     """Build validated Settings from a parsed config.toml mapping."""
+    _deprecated(data)
     llm_section = _table(data, "llm")
     _check_keys(
         llm_section,
@@ -249,18 +263,12 @@ def settings_from_dict(data: Mapping[str, Any], path: Path | None = None) -> Set
         strip_en_suffix=_boolean(output_section, "strip_en_suffix", True, "output"),
     )
 
-    cleanup_section = _table(data, "cleanup")
-    _check_keys(cleanup_section, {"strip_hi"}, "cleanup")
-    cleanup_settings = CleanupSettings(
-        strip_hi=_boolean(cleanup_section, "strip_hi", False, "cleanup"),
-    )
-
+    # "cleanup" is not a setting any more; _deprecated names it, once.
     _check_keys(data, {"llm", "batch", "output", "cleanup"}, "root")
     return Settings(
         llm=llm_settings,
         batch=batch_settings,
         output=output_settings,
-        cleanup=cleanup_settings,
         path=path,
     )
 
