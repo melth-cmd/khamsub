@@ -4,8 +4,9 @@ Two jobs, always together:
 
 1. Text hygiene, which needs no source and can never change meaning: normalise
    spaces and line endings, drop stray digit-only placeholders from another
-   tool, close one missing tag or drop one orphan close, and reduce a 3+ line
-   cue to two lines at a safe space. Timings and indexes are never touched.
+   tool, close one missing tag or drop one orphan close, remove a line-final
+   full stop, and reduce a 3+ line cue to two lines at a safe space. Timings and
+   indexes are never touched.
 
 2. A source-aware audit: align the two files by time (align.py), then use the
    English line to find the Thai lines that are empty, truncated, still English,
@@ -53,8 +54,8 @@ REPORT_KINDS = {
 }
 
 # Strong enough to spend a request on: the Thai is missing or clearly wrong,
-# not merely styled differently. Stray punctuation and tags are fixed by code
-# or left to a human; a retry would not reliably help.
+# not merely styled differently. Stray punctuation and broken tags are fixed by
+# repair_text() itself, so a retry would be money for nothing.
 CANDIDATE_KINDS = {
     "empty",
     "truncation",
@@ -141,6 +142,13 @@ def repair_text(index: int, text: str) -> TextFix:
     if tag_problem is not None:
         fix.problems.append(Problem(index, "tags", tag_problem))
     text = text.strip()
+
+    text, stops = _strip_stray_stops(text)
+    if stops:
+        detail = "removed line-final full stop"
+        if stops > 1:
+            detail = f"removed {stops} line-final full stops"
+        fix.changes.append(Change(index, "punctuation", detail))
 
     if layout.line_count(text) >= 3:
         wrapped = _fit_two_lines(text)
@@ -468,6 +476,29 @@ def _balance_tags(text: str) -> tuple[str, list[str], str | None]:
         names = ", ".join(f"<{name}>" for name in stack)
         return text, [], f"unbalanced tags: missing {names}"
     return text, [], "unbalanced tags"
+
+
+def _strip_stray_stops(text: str) -> tuple[str, int]:
+    """Remove line-final full stops, which Thai subtitles do not use (issue #24).
+
+    The rule is llm.stray_punctuation()'s, so repair and the validator cannot
+    drift apart: an ellipsis, question and exclamation marks, a dot after a
+    digit (88.5) and a mid-line abbreviation (ดร.) all stay. A line still in
+    English keeps its English punctuation; `english_left` already reports it.
+    Closing quotes and closing tags stay in place, because the dot is removed
+    where it sits, not at the end of the raw string.
+    """
+    lines: list[str] = []
+    removed = 0
+    for line in text.split("\n"):
+        # Re-run the check after each removal, so a ".." typo is clean in one
+        # pass; otherwise the audit would flag what repair has just touched.
+        while has_thai(line) and llm.stray_punctuation(line):
+            cut = line.rfind(".")
+            line = (line[:cut] + line[cut + 1 :]).rstrip()
+            removed += 1
+        lines.append(line)
+    return "\n".join(lines), removed
 
 
 def _fit_two_lines(text: str) -> str | None:

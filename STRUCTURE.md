@@ -118,6 +118,7 @@ below. Each step names the file that owns it.
 | make the model retry instead of just reporting | `llm.py` | add an `Issue` in `validate`, like `missing_thai` |
 | change line wrapping, splitting or merging | `layout.py` | `rewrap` and `_merge_down` |
 | fix a line split mid-word | `layout.py` | `_splits_ok`, `_bad_boundary` |
+| change a free `--repair` text fix (spaces, tags, punctuation) | `repair.py` | `repair_text`; the punctuation rule reuses `llm.stray_punctuation` |
 | fix cue parsing, timestamps or encoding | `srtio.py` | |
 | change batching or how much context a batch sees | `batcher.py` | |
 | change retry count, backoff or failure handling | `runner.py` | |
@@ -142,7 +143,7 @@ Real bugs, and where each one lived. Useful when a symptom looks new.
 | `ทwerp`: Latin glued to Thai, shipped unreported | `llm.mixed_script`, `verify.mixed_script` |
 | three lines where the source had two | `llm.validate` (`extra_lines`) then `layout._merge_down` |
 | half a cue missing, merged into one short line | `llm.validate` (soft `truncation`) + `verify.truncation_flag` |
-| a Thai line ending in a full stop | `llm.stray_punctuation`, soft retry, `verify.stray_punctuation` |
+| a Thai line ending in a full stop | `llm.stray_punctuation`, soft retry, `verify.stray_punctuation`; `repair.repair_text` removes it in `--repair` |
 | a cue opening with the line above it | the `extra_lines` retry, plus `verify.bleed_flag` |
 | a number, URL or code lost in translation | `llm.missing_kept`, reported as `lost_token` |
 | speaker dashes ignored entirely | `layout.DASHES` was missing U+2010 |

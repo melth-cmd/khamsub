@@ -82,6 +82,29 @@ def test_repair_dry_run_writes_nothing(tmp_path, capsys):
     assert "dry run; nothing written" in out
 
 
+def test_repair_removes_a_stray_full_stop_and_reports_it(tmp_path, capsys):
+    thai, _ = repair_pair(
+        tmp_path, thai_text="ใครเหรอ.", source_text="Who is it?"
+    )
+
+    assert translate.main(["--repair", str(thai), "--dry-run"]) == 0
+    dry_out = capsys.readouterr().out
+    # write_srt adds a BOM, so the free pass also normalises the encoding.
+    assert "Would repair 2 changes in 1 cue: encoding 1, punctuation 1" in dry_out
+    assert "[1] punctuation: removed line-final full stop" in dry_out
+    assert "Needs a look: nothing" in dry_out
+    assert srtio.load_srt(thai).subtitles[0].content == "ใครเหรอ."  # still untouched
+
+    assert translate.main(["--repair", str(thai)]) == 0
+    assert srtio.load_srt(thai).subtitles[0].content == "ใครเหรอ"
+    report = thai.with_suffix(".repair-report.txt").read_text(encoding="utf-8")
+    assert "Repaired 2 changes in 1 cue: encoding 1, punctuation 1" in report
+    assert "removed line-final full stop" in report
+    assert "Needs a look: nothing" in report
+    assert "Retranslation candidates: none" in report
+    assert "stray_punctuation" not in report
+
+
 def test_repair_refuses_an_existing_backup(tmp_path, capsys):
     thai, _ = repair_pair(tmp_path)
     original = thai.read_bytes()

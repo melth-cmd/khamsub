@@ -193,9 +193,10 @@ you are not happy with. Put the English next to it as `Movie.en.srt` (or pass
     khamsub --repair "Movie.th.srt"
 
 It does two things: safe text fixes (encoding, spaces, stray `{N}`, one missing
-or orphan tag, 3+ lines reduced to 2) and a report of lines that look wrong
-(empty, truncated, English left in, mixed script, glossary, timing). Indexes and
-timestamps never change, and the free run sends nothing to a model.
+or orphan tag, a line-final full stop, 3+ lines reduced to 2) and a report of
+lines that look wrong (empty, truncated, English left in, mixed script,
+glossary, timing). Indexes and timestamps never change, and the free run sends
+nothing to a model.
 
 The original is kept as `Movie.th.srt.bak` and the repaired file replaces
 `Movie.th.srt`, so it is ready to watch. The report is
@@ -234,6 +235,7 @@ lists any problems with the line number, the English and the Thai. Common flags:
     bleed                  the first line repeats a line from the cue above
     dashes_lost            a speaker dash such as "- " disappeared
     stray_punctuation      a line ends with a full stop, which Thai does not use
+                           (`--repair` removes these)
     tag_mismatch           formatting tags are missing or invented
     lost_token             a number, URL or code from the source is missing
     glossary_missing       a term is not written the way the glossary says

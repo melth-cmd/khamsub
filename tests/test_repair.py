@@ -64,6 +64,106 @@ def test_more_than_one_missing_tag_is_reported():
     assert [problem.kind for problem in fix.problems] == ["tags"]
 
 
+# --- punctuation ------------------------------------------------------------
+
+
+def test_a_line_final_full_stop_is_removed():
+    fix = repair.repair_text(1, "ใครเหรอ.")
+    assert fix.text == "ใครเหรอ"
+    assert [change.kind for change in fix.changes] == ["punctuation"]
+    assert fix.changes[0].detail == "removed line-final full stop"
+
+
+def test_the_issue_fixture_is_cleaned():
+    english = [
+        cue(1, 1, 2, "Hello, Margot."),
+        cue(2, 3, 4, "It's cold."),
+        cue(3, 5, 6, "Really?"),
+    ]
+    thai = [
+        cue(1, 1, 2, "สวัสดี มาร์กอท."),
+        cue(2, 3, 4, "มันหนาว."),
+        cue(3, 5, 6, "จริงเหรอ?"),
+    ]
+
+    result = repair.repair_subtitles(thai, english)
+
+    assert [cue.content for cue in result.subtitles] == [
+        "สวัสดี มาร์กอท",
+        "มันหนาว",
+        "จริงเหรอ?",
+    ]
+    assert [change.kind for change in result.changes] == ["punctuation", "punctuation"]
+    assert not any(problem.kind == "stray_punctuation" for problem in result.problems)
+    assert result.alignment.ok
+
+
+def test_an_ellipsis_keeps_its_dots():
+    fix = repair.repair_text(1, "เจอกันพรุ่งนี้เช้า...")
+    assert fix.text == "เจอกันพรุ่งนี้เช้า..."
+    assert fix.changes == []
+
+
+def test_a_decimal_keeps_its_full_stop():
+    fix = repair.repair_text(1, "ราคา 88.5")
+    assert fix.text == "ราคา 88.5"
+    assert fix.changes == []
+
+
+def test_question_and_exclamation_marks_stay():
+    fix = repair.repair_text(1, "จริงเหรอ?\nไปกันเถอะ!")
+    assert fix.text == "จริงเหรอ?\nไปกันเถอะ!"
+    assert fix.changes == []
+
+
+def test_a_full_stop_before_a_closing_quote_is_removed():
+    fix = repair.repair_text(1, 'ไม่เป็นไรเลย."')
+    assert fix.text == 'ไม่เป็นไรเลย"'
+    assert [change.kind for change in fix.changes] == ["punctuation"]
+
+
+def test_a_full_stop_before_a_closing_tag_is_removed():
+    fix = repair.repair_text(1, "<i>ฉันไง.</i>")
+    assert fix.text == "<i>ฉันไง</i>"
+    assert [change.kind for change in fix.changes] == ["punctuation"]
+
+
+def test_an_unclosed_tag_is_closed_before_the_stop_is_removed():
+    fix = repair.repair_text(1, "<i>ฉันไง.")
+    assert fix.text == "<i>ฉันไง</i>"
+    assert [change.kind for change in fix.changes] == ["tag", "punctuation"]
+
+
+def test_every_line_of_a_cue_is_checked():
+    fix = repair.repair_text(1, "หนึ่ง.\nสอง.")
+    assert fix.text == "หนึ่ง\nสอง"
+    assert fix.changes[0].detail == "removed 2 line-final full stops"
+
+
+def test_an_english_line_keeps_its_full_stop():
+    assert repair.repair_text(1, "Hello.").text == "Hello."
+    assert repair.repair_text(1, "ไทย.\nHello.").text == "ไทย\nHello."
+
+
+def test_a_mid_line_abbreviation_is_left_alone():
+    assert repair.repair_text(1, "ดร. เรเยส มาแล้ว").changes == []
+    assert repair.repair_text(1, "ดร.เรเยส มาแล้ว").changes == []
+
+
+def test_two_dots_are_removed_in_one_pass():
+    fix = repair.repair_text(1, "เดี๋ยว..")
+    assert fix.text == "เดี๋ยว"
+    assert [change.kind for change in fix.changes] == ["punctuation"]
+
+
+def test_repair_text_is_idempotent_for_punctuation():
+    for text in ("ใครเหรอ.", 'ฉันไง."', "<i>ฉันไง.</i>", "เดี๋ยว..", "หนึ่ง.\nสอง."):
+        once = repair.repair_text(1, text)
+        twice = repair.repair_text(1, once.text)
+        assert twice.text == once.text
+        assert twice.changes == []
+
+
 def test_three_lines_are_reduced_to_two_at_a_space():
     text = "ฉันอยากกินขนมก่อนนอน\nแต่ต้องแปรงฟันก่อน\nนะแม่นะ"
     fix = repair.repair_text(1, text)
@@ -155,6 +255,13 @@ def test_a_thai_only_cue_is_reported_without_a_source():
     assert (9, "no_source") in [(p.index, p.kind) for p in result.problems]
     assert result.alignment.ok
     assert 9 not in result.candidates
+
+
+def test_a_cue_without_a_source_still_has_its_stop_removed():
+    result = repair.repair_subtitles([cue(9, 0, 2, "เพิ่ม.")], [])
+    assert result.subtitles[0].content == "เพิ่ม"
+    assert [change.kind for change in result.changes] == ["punctuation"]
+    assert (9, "no_source") in [(p.index, p.kind) for p in result.problems]
 
 
 def test_a_split_cue_is_ambiguous_and_blocks_retranslation():

@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- `--repair` removes a line-final full stop instead of only reporting it, so a
+  repaired file matches what a normal translation run produces. `...`, `?`, `!`,
+  a decimal such as `88.5` and a mid-line abbreviation such as `ดร.` are left
+  alone, and a line still in English keeps its punctuation. The change appears
+  under "Repaired" as `punctuation`. (#24)
+
 ## [0.4.1] - 2026-11-12
 
 ### Added
