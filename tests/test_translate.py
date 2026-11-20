@@ -11,6 +11,7 @@ from khamsub import bible
 from khamsub import cache
 from khamsub import config
 from khamsub import glossary
+from khamsub import llm
 from khamsub import paths
 from khamsub import pipeline
 from khamsub import srtio
@@ -454,6 +455,27 @@ BIBLE_REPLY = json.dumps(
     },
     ensure_ascii=False,
 )
+
+
+def test_the_bible_summary_shows_tokens_and_cost(tmp_path):
+    result = bible.BibleResult(
+        bible=bible.Bible(),
+        usage=llm.Usage(
+            prompt_tokens=100,
+            completion_tokens=50,
+            reasoning_tokens=20,
+            cost_usd=0.001,
+        ),
+    )
+    text = translate._bible_summary(
+        tmp_path / "m.en.srt",
+        result,
+        tmp_path / "m.bible.md",
+        tmp_path / "m.glossary.toml",
+    )
+    assert "150 tokens" in text
+    assert "100 in" in text and "50 out" in text and "20 reasoning" in text
+    assert "$0.0010" in text
 
 
 def test_bible_only_writes_both_files_and_stops(project, fake, capsys):

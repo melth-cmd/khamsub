@@ -482,7 +482,14 @@ def _ask(
         try:
             return parse_json(completion.text), usage, calls
         except BibleError as exc:
-            log.warning("%s", exc)
+            log.warning(
+                "%s (this call: %d tokens, %s)",
+                exc,
+                completion.usage.prompt_tokens + completion.usage.completion_tokens,
+                f"${completion.usage.cost_usd:.4f}"
+                if completion.usage.cost_usd is not None
+                else "cost not reported",
+            )
             if attempt >= attempts:
                 raise
             messages = list(messages) + [

@@ -576,7 +576,7 @@ def _bible_summary(
         f"{source.name} -> {bible_path.name}, {glossary_path.name}",
         f"{characters} {'character' if characters == 1 else 'characters'}",
         f"{terms} {'term' if terms == 1 else 'terms'}",
-        f"{result.total_tokens:,} tokens",
+        _usage_text(result.usage),
     ]
     return "  ".join(parts)
 
