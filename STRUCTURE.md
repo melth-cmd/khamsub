@@ -31,7 +31,8 @@ khamsub/                    # repo root
 │   ├── align.py             # --repair: pair English and Thai cues by time
 │   ├── repair.py            # --repair: safe text fixes plus a source-aware audit
 │   ├── srtio.py             # read/write .srt, encoding fallback, sidecar naming
-│   ├── tags.py              # {0} placeholders: protect / check / restore tags
+│   ├── tags.py              # {0} placeholders: protect / check / restore; drop
+│   │                        #   literal tags the source also has
 │   ├── hi.py                # strip SDH descriptions, keep "[Maya]"
 │   ├── batcher.py           # batching, context lines, --limit/--range selection
 │   ├── llm.py               # OpenRouter client, prompt, validation, usage
@@ -145,6 +146,7 @@ Real bugs, and where each one lived. Useful when a symptom looks new.
 | three lines where the source had two | `llm.validate` (`extra_lines`) then `layout._merge_down` |
 | half a cue missing, merged into one short line | `llm.validate` (soft `truncation`) + `verify.truncation_flag` |
 | a Thai line ending in a full stop | `llm.stray_punctuation`, soft retry, `verify.stray_punctuation`; `repair.repair_text` removes it in `--repair` |
+| doubled markup, `<i>♪ <i>♪ … ♪</i> ♪</i>` | `tags.strip_literals` before `restore`; cached doubles are re-translated; `llm._context_thai` keeps context markup-free |
 | a cue opening with the line above it | the `extra_lines` retry, plus `verify.bleed_flag` |
 | a number, URL or code lost in translation | `llm.missing_kept`, reported as `lost_token` |
 | speaker dashes ignored entirely | `layout.DASHES` was missing U+2010 |

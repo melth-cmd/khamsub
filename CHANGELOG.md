@@ -42,6 +42,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   a decimal such as `88.5` and a mid-line abbreviation such as `ดร.` are left
   alone, and a line still in English keeps its punctuation. The change appears
   under "Repaired" as `punctuation`. (#24)
+- A reply that writes formatting tags beside the placeholders no longer ships
+  doubled markup (`<i>♪ <i>♪ … ♪</i> ♪</i>`). A literal tag the source also has
+  is removed before the placeholders are restored, so the Thai survives with
+  the source's markup exactly once. Cached lines written by the old version are
+  re-translated on rerun, and the Thai context lines no longer show real tags to
+  the model. A tag the source did not have is left and still reported as
+  `tag_mismatch`. (#22)
 
 ## [0.4.1] - 2026-11-12
 

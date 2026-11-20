@@ -10,6 +10,7 @@ from khamsub import glossary
 from khamsub import llm
 from khamsub import pipeline
 from khamsub import srtio
+from khamsub import verify
 from khamsub.batcher import SourceEntry
 from conftest import FakeClient
 
@@ -117,6 +118,48 @@ def test_tags_are_restored_even_for_failed_entries():
 
     assert result.failures[0].ok is False
     assert result.subtitles[0].content == "<i>Hello.</i>"  # English kept, tags intact
+
+
+def test_doubled_markup_is_removed_before_it_ships(caplog):
+    from conftest import FakeClient
+
+    source = "<i>♪ And there's blood\non the ground ♪</i>"
+    reply = "{0}{1} <i>♪ และมีเลือด\nบนพื้น ♪</i> {2}{3}"
+    client = FakeClient([f"[1] {reply}"])
+
+    with caplog.at_level("WARNING"):
+        result = run(client, [subtitle(1, source)])
+
+    assert client.call_count == 1
+    assert result.failures == []
+    assert result.subtitles[0].content == "<i>♪ และมีเลือด\nบนพื้น ♪</i>"
+    assert "wrote literal markup" in caplog.text
+    assert verify.tag_mismatch(source, result.subtitles[0].content) is None
+
+
+def test_an_invented_literal_tag_is_not_removed_and_verify_flags_it():
+    from conftest import FakeClient
+
+    client = FakeClient(["[1] {0}สวัสดี{1} <b>"])
+    result = run(client, [subtitle(1, "<i>Hello.</i>")])
+
+    assert result.subtitles[0].content == "<i>สวัสดี</i> <b>"
+    flags = verify.verify_file(result).flags
+    assert [(flag.kind, flag.message) for flag in flags] == [
+        ("tag_mismatch", "tag mismatch: extra <b>")
+    ]
+
+
+def test_a_missing_placeholder_still_falls_back_to_english():
+    from conftest import FakeClient
+
+    # Literal tags but no placeholders: there is no placeholder to own them.
+    client = FakeClient(["[1] <i>♪ สวัสดี ♪</i>"] * 4)
+    result = run(client, [subtitle(1, "<i>♪ Hello ♪</i>")], max_retries=3)
+
+    assert result.subtitles[0].content == "<i>♪ Hello ♪</i>"
+    assert result.failures[0].ok is False
+    assert result.failures[0].reason == "tag_mismatch"
 
 
 def test_hi_dropped_entries_disappear_from_the_output():
@@ -489,6 +532,23 @@ def test_cached_merged_entry_is_rewrapped_on_read(tmp_path):
     assert client.call_count == 0
     assert result.subtitles[0].content == "หนึ่ง\nสอง"
     assert [r.index for r in result.rewrapped] == [1]
+
+
+def test_cached_doubled_markup_is_re_translated(tmp_path):
+    from conftest import FakeClient
+    from khamsub import cache as cache_module
+
+    source = "{0}{1} Hi {2}{3}"
+    store = cache_module.Cache(tmp_path / "c.cache.json", model="m")
+    store.put(1, source, "<i>♪ <i>♪ ไฮ ♪</i> ♪</i>")  # written by 0.4.0
+    client = FakeClient(["[1] {0}{1} ไฮ {2}{3}"])
+
+    result = run(client, [subtitle(1, "<i>♪ Hi ♪</i>")], cache=store)
+
+    assert client.call_count == 1
+    assert result.results[0].from_cache is False
+    assert result.subtitles[0].content == "<i>♪ ไฮ ♪</i>"
+    assert store.get(1, source) == "<i>♪ ไฮ ♪</i>"
 
 
 def test_cache_stores_the_raw_model_output(tmp_path):

@@ -530,12 +530,27 @@ Rules:
 """
 
 
+def _context_thai(text: str) -> str:
+    """Thai context with its markup removed.
+
+    The context is the finished Thai, tags already restored. Showing it as-is
+    is the one place the model sees real <i>/♪ markup, and it then copies the
+    tags beside its placeholders (#22). Context is only there for tone and
+    pronouns, so its markup carries nothing the model needs.
+    """
+    lines = []
+    for line in text.split("\n"):
+        cleaned = re.sub(r"[ \t]{2,}", " ", tags.strip_markup(line)).strip()
+        lines.append(cleaned)
+    return "\n".join(lines)
+
+
 def _format_context(lines: Sequence[ContextLine], include_thai: bool) -> str:
     rendered = []
     for line in lines:
         rendered.append(f"[{line.index}] {line.text}")
         if include_thai and line.thai:
-            rendered.append(f"TH: {line.thai}")
+            rendered.append(f"TH: {_context_thai(line.thai)}")
     return "\n".join(rendered)
 
 

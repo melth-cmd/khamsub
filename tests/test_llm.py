@@ -145,6 +145,19 @@ def test_build_messages_includes_thai_in_before_context_only():
     assert "TH:" not in after_block
 
 
+def test_context_thai_carries_no_literal_markup():
+    # The finished Thai is not a place to show the model real tags (#22).
+    batch = make_batch(2)
+    batch.before = [
+        ContextLine(0, "{0}{1} Earlier {2}{3}", thai="<i>♪ ก่อนหน้านี้ ♪</i>")
+    ]
+    user = llm.build_messages(batch)[1]["content"]
+    assert "TH: ก่อนหน้านี้" in user
+    assert "<i>" not in user
+    assert "♪" not in user
+    assert "[0] {0}{1} Earlier {2}{3}" in user
+
+
 def test_system_prompt_states_the_core_rules():
     prompt = llm.SYSTEM_PROMPT
     assert "Thai" in prompt

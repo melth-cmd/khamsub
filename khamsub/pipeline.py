@@ -238,6 +238,16 @@ def translate_subtitles(
             # itself is what was flagged, so it is requested again.
             pending.append(entry)
             continue
+        protected = prepared.protected[entry.index]
+        if tags.has_extra_tags(fixed.text, protected):
+            # Written before literal markup beside the placeholders was removed
+            # (#22); serving this hit would put the doubling back in the file.
+            log.warning(
+                "Cached entry [%d] has more markup than its source; re-translating",
+                entry.index,
+            )
+            pending.append(entry)
+            continue
         result.results.append(
             EntryResult(
                 index=entry.index,
@@ -308,12 +318,21 @@ def translate_subtitles(
         result.usage = result.usage + batch_result.usage
         result.providers.update(batch_result.providers)
 
+        stripped = 0
         for entry_result in batch_result.entries:
-            restored = tags.restore(
-                entry_result.text,
-                prepared.protected[entry_result.index],
-                strict=False,
-            )
+            protected = prepared.protected[entry_result.index]
+            # The model sometimes writes the tag beside its placeholder. Remove
+            # that copy before restoring, so the markup is not doubled (#22).
+            reply, removed = tags.strip_literals(entry_result.text, protected)
+            if removed:
+                stripped += 1
+                log.debug(
+                    "Entry [%d] wrote %d literal tag(s); removed: %s",
+                    entry_result.index,
+                    len(removed),
+                    ", ".join(tag.raw for tag in removed),
+                )
+            restored = tags.restore(reply, protected, strict=False)
             fixed = layout.rewrap(source_text[entry_result.index], restored)
             result.results.append(
                 EntryResult(
@@ -334,6 +353,14 @@ def translate_subtitles(
                     cache.put(
                         entry_result.index, source_text[entry_result.index], restored
                     )
+
+        if stripped:
+            log.warning(
+                "%d entr%s wrote literal markup, which was removed "
+                "(the source placeholders kept the tags)",
+                stripped,
+                "y" if stripped == 1 else "ies",
+            )
 
         # Saved per batch: an interrupted run loses at most this batch.
         if cache is not None:

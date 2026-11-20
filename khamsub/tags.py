@@ -7,6 +7,11 @@ placeholder: the first becomes {0}, the second {1}, and so on.
 Placeholders are validated by count: a token the model dropped, duplicated or
 invented is a TagMismatch, which the retry layer turns into a re-request.
 
+A model sometimes writes the tags themselves *beside* the placeholders (issue
+#22: "{0}{1} <i>♪ … ♪</i> {2}{3}"). restore() drops a literal tag the source
+also had before putting the placeholders back, so the markup is never doubled;
+a literal tag the source did not have is left for verification to report.
+
 Sound-effect brackets ([door slams]) and speaker dashes ("- Hello.") are *not*
 tags here; they are content and pass through untouched.
 """
@@ -103,6 +108,69 @@ def protect(text: str) -> ProtectedText:
     return protected
 
 
+def _literal_matches(text: str) -> list[re.Match[str]]:
+    """Tag-like matches in `text` that are not one of our own placeholders."""
+    return [
+        match
+        for match in _TAG_RE.finditer(text)
+        if not _PLACEHOLDER_RE.fullmatch(match.group(0))
+    ]
+
+
+def literal_tags(text: str) -> list[Tag]:
+    """Tags a reply wrote itself, instead of (or beside) the placeholders.
+
+    The model only ever received placeholders, so real markup in a reply is
+    something it invented or copied. A placeholder ("{0}", "{ 1 }") is not a
+    tag and is not returned.
+    """
+    return [
+        Tag(raw=match.group(0), kind=match.lastgroup or "html")
+        for match in _literal_matches(text)
+    ]
+
+
+def strip_literals(text: str, protected: ProtectedText) -> tuple[str, list[Tag]]:
+    """Remove literal markup that would otherwise double the source's tags.
+
+    Only a tag whose raw form appeared in the source is removed: the model
+    wrote the tag a placeholder already stands for, so keeping both puts the
+    markup back twice. A literal tag the source did not have is left in place
+    for verification to report, because deleting it could remove content the
+    model wrote as text. Placeholders are never touched.
+    """
+    spans = [
+        match for match in _literal_matches(text) if match.group(0) in protected.counts
+    ]
+    if not spans:
+        return text, []
+
+    parts: list[str] = []
+    position = 0
+    for match in spans:
+        parts.append(text[position : match.start()])
+        position = match.end()
+    parts.append(text[position:])
+
+    # Removing inline markup leaves the spaces around it; Thai never needs two.
+    cleaned = re.sub(r"[ \t]{2,}", " ", "".join(parts))
+    removed = [
+        Tag(raw=match.group(0), kind=match.lastgroup or "html") for match in spans
+    ]
+    return cleaned, removed
+
+
+def has_extra_tags(text: str, protected: ProtectedText) -> bool:
+    """True if `text` carries more of a source tag than the source does.
+
+    `text` is already restored (the cache stores finished lines, not replies).
+    A cached line written by the version that accepted literal markup beside
+    the placeholders has doubled tags, so a rerun must translate it again
+    instead of serving the corruption (issue #22).
+    """
+    return bool(protect(text).counts - protected.counts)
+
+
 def check_protected(translated: str, protected: ProtectedText) -> list[TagIssue]:
     """Compare a translation's placeholders against the protected source."""
     seen = Counter(int(m.group(1)) for m in _PLACEHOLDER_RE.finditer(translated))
@@ -153,10 +221,23 @@ def check(source: str, translated: str) -> list[TagIssue]:
 def restore(text: str, protected: ProtectedText, strict: bool = True) -> str:
     """Put the real tags back where the placeholders are.
 
-    With strict=False a mismatch is logged instead of raised, and any tags that
-    never made it back are simply lost. Duplicates and unknown placeholders are
-    left as-is, since there is no correct tag to substitute.
+    A literal tag the source also had is removed first: the model wrote the tag
+    beside its placeholder, and keeping both would double the markup (issue
+    #22). A literal tag the source did not have is left in place, since no
+    placeholder owns it; verification reports it.
+
+    With strict=False a placeholder mismatch is logged instead of raised, and
+    any tags that never made it back are simply lost. Duplicates and unknown
+    placeholders are left as-is, since there is no correct tag to substitute.
     """
+    text, removed = strip_literals(text, protected)
+    if removed:
+        log.debug(
+            "Removed %d literal tag(s): %s",
+            len(removed),
+            ", ".join(tag.raw for tag in removed),
+        )
+
     issues = check_protected(text, protected)
     if issues:
         if strict:

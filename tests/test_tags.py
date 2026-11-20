@@ -152,6 +152,94 @@ def test_restore_no_tags_is_identity():
     assert tags.restore("สวัสดี", protected) == "สวัสดี"
 
 
+# --- literal markup (issue #22) ---------------------------------------------
+
+
+def test_literal_tags_finds_markup_the_model_wrote_itself():
+    found = tags.literal_tags("x <i>y</i> ♪ {\\an8}")
+    assert [tag.raw for tag in found] == ["<i>", "</i>", "♪", "{\\an8}"]
+    assert [tag.kind for tag in found] == ["html", "html", "music", "ass"]
+
+
+def test_literal_tags_ignores_placeholders():
+    assert tags.literal_tags("{0} Thai { 1 }") == []
+    assert tags.literal_tags("Thai") == []
+
+
+def test_literal_tags_leaves_plain_angle_brackets_alone():
+    # Not tags by _TAG_RE: no ASCII letter follows "<", or the text is Thai.
+    assert tags.literal_tags("a < b, 3<4, <3, <ใจ>") == []
+
+
+def test_strip_literals_removes_the_doubled_markup_from_the_issue():
+    source = "<i>♪ And there's blood\non the ground ♪</i>"
+    protected = tags.protect(source)
+    reply = "{0}{1} <i>♪ และมีเลือด\nบนพื้น ♪</i> {2}{3}"
+
+    cleaned, removed = tags.strip_literals(reply, protected)
+
+    assert cleaned == "{0}{1} และมีเลือด\nบนพื้น {2}{3}"
+    assert [tag.raw for tag in removed] == ["<i>", "♪", "♪", "</i>"]
+
+
+def test_strip_literals_keeps_a_tag_the_source_did_not_have():
+    protected = tags.protect("<i>Hi</i>")
+    cleaned, removed = tags.strip_literals("{0}ไฮ{1} <b>", protected)
+    assert cleaned == "{0}ไฮ{1} <b>"
+    assert removed == []
+
+
+def test_strip_literals_never_touches_a_placeholder():
+    protected = tags.protect("<i>Hi</i>")
+    cleaned, removed = tags.strip_literals("{ 0 }ไฮ{1}", protected)
+    assert cleaned == "{ 0 }ไฮ{1}"
+    assert removed == []
+
+
+def test_strip_literals_is_idempotent():
+    protected = tags.protect("<i>♪ Hi ♪</i>")
+    reply = "{0}{1} <i>♪ ไฮ ♪</i> {2}{3}"
+    once, _ = tags.strip_literals(reply, protected)
+    twice, removed = tags.strip_literals(once, protected)
+    assert twice == once
+    assert removed == []
+
+
+def test_restore_repairs_the_doubled_markup_from_issue_22():
+    source = "<i>♪ And there's blood\non the ground ♪</i>"
+    protected = tags.protect(source)
+    reply = "{0}{1} <i>♪ และมีเลือด\nบนพื้น ♪</i> {2}{3}"
+
+    assert tags.restore(reply, protected) == "<i>♪ และมีเลือด\nบนพื้น ♪</i>"
+
+
+def test_restore_keeps_an_invented_literal_tag():
+    protected = tags.protect("<i>Hi</i>")
+    assert tags.restore("{0}ไฮ{1} <b>", protected) == "<i>ไฮ</i> <b>"
+
+
+def test_has_extra_tags_sees_the_doubled_cached_line():
+    protected = tags.protect("<i>♪ Hi ♪</i>")
+    doubled = "<i>♪ <i>♪ ไฮ ♪</i> ♪</i>"
+    assert tags.has_extra_tags(doubled, protected) is True
+
+
+def test_has_extra_tags_accepts_a_clean_cached_line():
+    protected = tags.protect("<i>♪ Hi ♪</i>")
+    assert tags.has_extra_tags("<i>♪ ไฮ ♪</i>", protected) is False
+
+
+def test_has_extra_tags_sees_invented_markup():
+    protected = tags.protect("Hi")
+    assert tags.has_extra_tags("<i>ไฮ</i>", protected) is True
+
+
+def test_has_extra_tags_ignores_a_missing_tag():
+    # A missing tag is reported by verify; it is not a reason to spend a call.
+    protected = tags.protect("<i>Hi</i>")
+    assert tags.has_extra_tags("ไฮ", protected) is False
+
+
 def test_strip_markup_removes_tags_placeholders_and_music():
     assert tags.strip_markup("<i>Hello {0}</i> ♪") == "Hello  "
 

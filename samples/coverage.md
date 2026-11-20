@@ -150,7 +150,7 @@ not a failure. The same applies to cue 49.
 
 | Cue | Tests | Good looks like |
 |---|---|---|
-| 55 | `<i>` around a whole line | **auto**: `<i>` preserved, one line |
+| 55 | `<i>` around a whole line | **auto**: `<i>` preserved once (not doubled), one line |
 | 56 | `{\an8}` position tag + a sign | **auto**: `{\an8}` preserved; sign text in Thai |
 | 57 | `[SIGN: CLOSED]` bracket label | bracket handled, text in Thai |
 | 58 | `<i>` + a name | tag preserved; `Hector` matches cue 13 |
